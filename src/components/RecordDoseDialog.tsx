@@ -86,7 +86,7 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
           {given && (
             <div className="space-y-1">
               <Label htmlFor={`${uid}-givenDate`}>วันที่ฉีด</Label>
-              <Input id={`${uid}-givenDate`} type="date" value={givenDate} onChange={(e) => setGivenDate(e.target.value)} />
+              <Input id={`${uid}-givenDate`} type="date" value={givenDate} onChange={(e) => { setGivenDate(e.target.value); setError(null); }} />
             </div>
           )}
           <div className="space-y-1">

@@ -93,5 +93,8 @@ export function parseDayOffsets(text: string): { offsets: number[] } | { error: 
   for (let i = 1; i < offsets.length; i++) {
     if (offsets[i] <= offsets[i - 1]) return { error: "วันต้องเรียงจากน้อยไปมากและไม่ซ้ำ" };
   }
+  for (const offset of offsets) {
+    if (offset > 3650) return { error: "ระยะห่างต้องไม่เกิน 3650 วัน" };
+  }
   return { offsets };
 }

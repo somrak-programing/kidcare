@@ -83,7 +83,16 @@ describe("parseDayOffsets", () => {
   test("ignores trailing empty tokens", () => {
     expect(parseDayOffsets("0,3,")).toEqual({ offsets: [0, 3] });
   });
+  test("accepts max offset of 3650", () => {
+    expect(parseDayOffsets("0,3650")).toEqual({ offsets: [0, 3650] });
+  });
   test.each(["", "0,-3", "0,1.5", "3,7", "0,7,3", "0,3,3"])("rejects %j", (text) => {
     expect(parseDayOffsets(text)).toHaveProperty("error");
+  });
+  test("rejects offset 3651", () => {
+    expect(parseDayOffsets("0,3651")).toHaveProperty("error");
+  });
+  test("rejects large offset 999999999", () => {
+    expect(parseDayOffsets("0,999999999")).toHaveProperty("error");
   });
 });
