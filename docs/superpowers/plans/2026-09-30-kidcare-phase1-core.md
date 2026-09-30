@@ -1217,7 +1217,7 @@ git commit -m "feat(domain): zod form validation"
 
 Ask the user to do this in the Firebase console (it needs their Google account), or run it with them:
 1. Create a project, e.g. `kidcare-<suffix>` (Spark plan, Analytics off).
-2. Build → Firestore Database → Create database → production mode → region `asia-southeast1`.
+2. Build → Firestore Database → Create database → production mode → region `asia-southeast3` (Bangkok).
 3. Build → Authentication → Get started → enable **Google**.
 4. Project settings → Your apps → Web app "KidCare" → copy the config into `.env.local` (keys from `.env.example`).
 5. Tell you the project id.
