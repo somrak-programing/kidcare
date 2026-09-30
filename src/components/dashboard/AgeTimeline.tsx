@@ -246,29 +246,31 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
           </g>
         </svg>
       </div>
-      <table className="sr-only">
-        <caption>{chartLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">ลูก</th>
-            <th scope="col">วัคซีน</th>
-            <th scope="col">วันที่</th>
-            <th scope="col">สถานะ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.flatMap((r) =>
-            r.data.points.map((p) => (
-              <tr key={`${r.id}-${p.doseId}`}>
-                <td>{r.name}</td>
-                <td>{p.label}</td>
-                <td>{formatThaiDate(p.date)}</td>
-                <td>{STATUS_TEXT[p.status]}</td>
-              </tr>
-            )),
-          )}
-        </tbody>
-      </table>
+      <div className="sr-only">
+        <table>
+          <caption>{chartLabel}</caption>
+          <thead>
+            <tr>
+              <th scope="col">ลูก</th>
+              <th scope="col">วัคซีน</th>
+              <th scope="col">วันที่</th>
+              <th scope="col">สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.flatMap((r) =>
+              r.data.points.map((p) => (
+                <tr key={`${r.id}-${p.doseId}`}>
+                  <td>{r.name}</td>
+                  <td>{p.label}</td>
+                  <td>{formatThaiDate(p.date)}</td>
+                  <td>{STATUS_TEXT[p.status]}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

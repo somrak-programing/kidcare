@@ -18,7 +18,7 @@ export function StatTiles({ summary, kidsById }: { summary: DashboardSummary; ki
       <div className={tile}>
         <p className={label}>เลยกำหนด</p>
         <p className={`flex items-center gap-1 text-2xl font-bold ${overdueCount > 0 ? "text-red-300" : ""}`}>
-          <AlertTriangle size={18} aria-hidden="true" /> {overdueCount} เข็ม
+          {overdueCount > 0 && <AlertTriangle size={18} aria-hidden="true" />} {overdueCount} เข็ม
         </p>
       </div>
       <div className={tile}>

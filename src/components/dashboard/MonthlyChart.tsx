@@ -199,33 +199,35 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
           })}
         </svg>
       </div>
-      <table className="sr-only">
-        <caption>{chartLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">เดือน</th>
-            {kids.map((k) => (
-              <th key={k.id} scope="col">
-                {k.name}
-              </th>
-            ))}
-            <th scope="col">รวม</th>
-          </tr>
-        </thead>
-        <tbody>
-          {buckets.map((b) => (
-            <tr key={b.key}>
-              <td>
-                {b.label} {b.yearBE}
-              </td>
+      <div className="sr-only">
+        <table>
+          <caption>{chartLabel}</caption>
+          <thead>
+            <tr>
+              <th scope="col">เดือน</th>
               {kids.map((k) => (
-                <td key={k.id}>{b.counts[k.id] ?? 0}</td>
+                <th key={k.id} scope="col">
+                  {k.name}
+                </th>
               ))}
-              <td>{b.total}</td>
+              <th scope="col">รวม</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {buckets.map((b) => (
+              <tr key={b.key}>
+                <td>
+                  {b.label} {b.yearBE}
+                </td>
+                {kids.map((k) => (
+                  <td key={k.id}>{b.counts[k.id] ?? 0}</td>
+                ))}
+                <td>{b.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
