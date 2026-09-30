@@ -20,7 +20,9 @@ service cloud.firestore {
         && request.auth.uid in resource.data.memberUids
         && request.resource.data.ownerUid == resource.data.ownerUid
         && (request.resource.data.memberUids == resource.data.memberUids
-            || request.auth.uid == resource.data.ownerUid);
+            || (request.auth.uid == resource.data.ownerUid
+                && request.resource.data.memberUids is list
+                && request.resource.data.ownerUid in request.resource.data.memberUids));
       allow delete: if false;
 
       match /appointments/{id} {
