@@ -7,3 +7,6 @@ export const childDoc = (fid: string, cid: string) => doc(db, "families", fid, "
 export const childSub = (fid: string, cid: string, name: "allergies" | "vaccineSeries" | "vaccineDoses") =>
   collection(db, "families", fid, "children", cid, name);
 export const appointmentsCol = (fid: string) => collection(db, "families", fid, "appointments");
+
+export const invitesCol = () => collection(db, "invites");
+export const inviteDoc = (email: string) => doc(db, "invites", email);

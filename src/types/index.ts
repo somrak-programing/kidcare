@@ -12,6 +12,15 @@ export interface Family {
   name: string;
   ownerUid: string;
   memberUids: string[];
+  memberProfiles?: Record<string, { name: string; email: string }>;
+}
+
+export interface Invite {
+  id: string; // = อีเมล (lowercase)
+  familyId: string;
+  familyName: string;
+  invitedBy: string;
+  email: string;
 }
 
 export interface Child {
