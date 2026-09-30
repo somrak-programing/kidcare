@@ -11,7 +11,7 @@ export default function UpcomingList({ fid, items, kids }: { fid: string; items:
   const g = groupUpcoming(items, todayISO());
   const who = (cid: string) => {
     const c = kids.find((x) => x.id === cid);
-    return c ? c.nickname || c.name : "";
+    return c ? c.nickname || c.name || "ไม่ระบุ" : "ไม่ระบุ";
   };
   const sections: [string, UpcomingItem[], string][] = [
     ["เลยกำหนด", g.overdue, "border-red-500/60"],
@@ -34,7 +34,7 @@ export default function UpcomingList({ fid, items, kids }: { fid: string; items:
                 <div className="flex flex-wrap gap-1">
                   <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${who(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
                   {it.kind === "appointment" && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setAppointmentDone(fid, it.id, true)}><Check size={14} /> ไปแล้ว</Button>
+                    <Button type="button" variant="ghost" size="sm" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}><Check size={14} /> ไปแล้ว</Button>
                   )}
                 </div>
               </div>

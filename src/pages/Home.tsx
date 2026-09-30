@@ -12,10 +12,10 @@ import type { UpcomingItem } from "@/domain/upcoming";
 
 export default function Home() {
   const fid = useFamilyId();
-  const { data: children, loading, error } = useChildren(fid);
+  const { data: children, loading: childrenLoading, error } = useChildren(fid);
   const childIds = useMemo(() => children.map((c) => c.id), [children]);
-  const { data: pending, error: e2 } = usePendingDoses(fid, childIds);
-  const { data: appts, error: e3 } = useOpenAppointments(fid);
+  const { data: pending, error: e2, loading: pendingLoading } = usePendingDoses(fid, childIds);
+  const { data: appts, error: e3, loading: apptsLoading } = useOpenAppointments(fid);
   const today = todayISO();
 
   const items: UpcomingItem[] = useMemo(
@@ -28,9 +28,10 @@ export default function Home() {
     [pending, appts],
   );
 
+  const dataLoading = pendingLoading || apptsLoading;
   const err = error ?? e2 ?? e3;
   if (err) return <ErrorState error={err} />;
-  if (loading) return <p className="text-muted-foreground">กำลังโหลด…</p>;
+  if (childrenLoading) return <p className="text-muted-foreground">กำลังโหลด…</p>;
 
   if (!children.length)
     return (
@@ -47,7 +48,7 @@ export default function Home() {
           <h2 className="font-semibold">นัดที่รออยู่</h2>
           <Button asChild size="sm" variant="outline"><Link to="/appointments/new"><CalendarPlus size={14} /> นัดหมอ</Link></Button>
         </div>
-        <UpcomingList fid={fid} items={items} kids={children} />
+        {dataLoading ? <p className="text-sm text-muted-foreground">กำลังโหลด…</p> : <UpcomingList fid={fid} items={items} kids={children} />}
       </section>
       <section className="space-y-2">
         <div className="flex items-center justify-between">
@@ -57,7 +58,7 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-3">
           {children.map((c) => (
             <ChildCard key={c.id} fid={fid} child={c}
-              overdueCount={pending.filter((d) => d.childId === c.id && d.dueDate && d.dueDate < today).length} />
+              overdueCount={dataLoading ? 0 : pending.filter((d) => d.childId === c.id && d.dueDate && d.dueDate < today).length} />
           ))}
         </div>
       </section>

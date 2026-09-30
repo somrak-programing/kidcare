@@ -55,10 +55,14 @@ export default function ChildDetail() {
 }
 
 function ChildAppointments({ fid, cid, who }: { fid: string; cid: string; who: string }) {
-  const { data } = useOpenAppointments(fid);
-  const mine = data.filter((a) => a.childId === cid).sort((a, b) => a.date.localeCompare(b.date));
+  const { data, error } = useOpenAppointments(fid);
+  if (error) return <ErrorState error={error} />;
+  const mine = data
+    .filter((a) => a.childId === cid)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
   return (
     <div className="space-y-2">
+      {!mine.length && <p className="text-sm text-muted-foreground">ยังไม่มีนัด</p>}
       {mine.map((a) => (
         <div key={a.id} className="space-y-1 rounded-lg border p-3 text-sm">
           <Link to={`/appointments/${a.id}/edit`} className="block">

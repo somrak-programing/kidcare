@@ -24,7 +24,7 @@ export default function AppointmentForm() {
   const fid = useFamilyId();
   const nav = useNavigate();
   const uid = useId();
-  const { data: children } = useChildren(fid);
+  const { data: children, loading: childrenLoading } = useChildren(fid);
   const { data: existing, loading, error: loadError } = useDocument<Appointment>(
     apptId ? doc(appointmentsCol(fid), apptId) : null,
     `appt/${fid}/${apptId ?? ""}`,
@@ -38,6 +38,12 @@ export default function AppointmentForm() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const prefilledId = useRef<string | null>(null);
+
+  useEffect(() => {
+    // ?child= ที่ไม่ตรงกับเด็กที่มีอยู่ → ล้างค่า (หลังโหลดเด็กเสร็จเท่านั้น)
+    if (childrenLoading || apptId || !childId || children.some((c) => c.id === childId)) return;
+    setChildId("");
+  }, [children, childrenLoading, childId, apptId]);
 
   useEffect(() => {
     if (!childId && children.length === 1) setChildId(children[0].id);
@@ -65,7 +71,7 @@ export default function AppointmentForm() {
     const m = firstError(r);
     if (m || !r.success) return setError(m);
     saveAppointment(fid, { ...r.data, done: existing?.done ?? false }, apptId);
-    nav(backTo(r.data.childId));
+    nav(backTo(r.data.childId), { replace: true });
   }
 
   const cancelTo = backTo(existing?.childId ?? sp.get("child") ?? "");
@@ -120,7 +126,7 @@ export default function AppointmentForm() {
             onClick={() => {
               if (confirm("ลบนัดนี้?")) {
                 deleteAppointment(fid, apptId);
-                nav("/");
+                nav(cancelTo, { replace: true });
               }
             }}
           >

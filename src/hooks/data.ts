@@ -35,22 +35,32 @@ export function usePendingDoses(fid: string, childIds: string[]) {
   const key = childIds.join(",");
   const [byChild, setByChild] = useState<Record<string, VaccineDose[]>>({});
   const [error, setError] = useState<FirestoreError | null>(null);
+  const [settled, setSettled] = useState<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
   useEffect(() => {
     setByChild({});
     setError(null);
+    setSettled({ key, ids: new Set() });
+    const markSettled = (cid: string) =>
+      setSettled((s) => (s.key !== key || s.ids.has(cid) ? s : { key, ids: new Set(s.ids).add(cid) }));
     const unsubs = childIds.map((cid) =>
       onSnapshot(
         query(childSub(fid, cid, "vaccineDoses"), where("given", "==", false)),
         (snap) => {
           setError(null);
           setByChild((m) => ({ ...m, [cid]: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VaccineDose) }));
+          markSettled(cid);
         },
-        setError,
+        (e) => {
+          setError(e);
+          markSettled(cid);
+        },
       ),
     );
     return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fid, key]);
   const data = useMemo(() => Object.values(byChild).flat(), [byChild]);
-  return { data, error };
+  // loading = ยังมีเด็กบางคนที่ snapshot แรกยังไม่มา (settled ของชุดเด็กก่อนหน้า key ไม่ตรงจึงไม่นับ)
+  const loading = childIds.length > 0 && (settled.key !== key || childIds.some((cid) => !settled.ids.has(cid)));
+  return { data, error, loading };
 }
