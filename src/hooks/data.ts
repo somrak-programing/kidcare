@@ -37,10 +37,14 @@ export function usePendingDoses(fid: string, childIds: string[]) {
   const [error, setError] = useState<FirestoreError | null>(null);
   useEffect(() => {
     setByChild({});
+    setError(null);
     const unsubs = childIds.map((cid) =>
       onSnapshot(
         query(childSub(fid, cid, "vaccineDoses"), where("given", "==", false)),
-        (snap) => setByChild((m) => ({ ...m, [cid]: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VaccineDose) })),
+        (snap) => {
+          setError(null);
+          setByChild((m) => ({ ...m, [cid]: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VaccineDose) }));
+        },
         setError,
       ),
     );

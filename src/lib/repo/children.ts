@@ -2,6 +2,7 @@ import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import type { ChildInput } from "@/types";
 import { fire } from "../fire";
 import { childDoc, childrenCol } from "../paths";
+import { undefinedToDelete } from "./clearUndefined";
 
 export function createChild(fid: string, input: ChildInput): string {
   const ref = doc(childrenCol(fid));
@@ -10,5 +11,5 @@ export function createChild(fid: string, input: ChildInput): string {
 }
 
 export function updateChild(fid: string, cid: string, input: ChildInput) {
-  fire(updateDoc(childDoc(fid, cid), { ...input }));
+  fire(updateDoc(childDoc(fid, cid), undefinedToDelete(input, ["nickname", "bloodType"])));
 }

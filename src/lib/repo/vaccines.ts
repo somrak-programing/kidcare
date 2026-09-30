@@ -1,10 +1,11 @@
-import { doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc, writeBatch, type WriteBatch } from "firebase/firestore";
 import { EPI_TEMPLATE } from "@/data/epi";
 import { generateEpiSeries, type DoseDraft, type SeriesDraft } from "@/domain/schedule";
 import type { ISODate, VaccineDose } from "@/types";
 import { db } from "../firebase";
 import { fire } from "../fire";
 import { childSub } from "../paths";
+import { undefinedToDelete } from "./clearUndefined";
 
 function newDoseDoc(fid: string, cid: string, seriesId: string, d: DoseDraft): Omit<VaccineDose, "id"> {
   return {
@@ -22,19 +23,26 @@ function newDoseDoc(fid: string, cid: string, seriesId: string, d: DoseDraft): O
   };
 }
 
-export function createSeriesWithDoses(fid: string, cid: string, s: SeriesDraft): string {
-  const batch = writeBatch(db);
+function addSeriesToBatch(batch: WriteBatch, fid: string, cid: string, s: SeriesDraft): string {
   const seriesRef = doc(childSub(fid, cid, "vaccineSeries"));
   batch.set(seriesRef, { name: s.name, source: s.source, templateKey: s.templateKey, reason: s.reason, createdAt: serverTimestamp() });
   for (const d of s.doses) {
     batch.set(doc(childSub(fid, cid, "vaccineDoses")), newDoseDoc(fid, cid, seriesRef.id, d));
   }
-  fire(batch.commit());
   return seriesRef.id;
 }
 
+export function createSeriesWithDoses(fid: string, cid: string, s: SeriesDraft): string {
+  const batch = writeBatch(db);
+  const id = addSeriesToBatch(batch, fid, cid, s);
+  fire(batch.commit());
+  return id;
+}
+
 export function createEpiSeries(fid: string, cid: string, birthDate: ISODate) {
-  for (const s of generateEpiSeries(EPI_TEMPLATE, birthDate)) createSeriesWithDoses(fid, cid, s);
+  const batch = writeBatch(db);
+  for (const s of generateEpiSeries(EPI_TEMPLATE, birthDate)) addSeriesToBatch(batch, fid, cid, s);
+  fire(batch.commit());
 }
 
 export function updateDose(
@@ -44,7 +52,7 @@ export function updateDose(
   patch: Partial<Omit<VaccineDose, "id" | "familyId" | "childId">>,
 ) {
   // familyId/childId ส่งซ้ำเพื่อให้ผ่าน rules (request.resource.data ต้องมี)
-  fire(updateDoc(doc(childSub(fid, cid, "vaccineDoses"), doseId), { ...patch, familyId: fid, childId: cid }));
+  fire(updateDoc(doc(childSub(fid, cid, "vaccineDoses"), doseId), { ...undefinedToDelete(patch), familyId: fid, childId: cid }));
 }
 
 export function applyDueDates(fid: string, cid: string, updates: { id: string; dueDate: ISODate }[]) {
