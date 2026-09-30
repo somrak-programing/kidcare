@@ -5,7 +5,7 @@ import type { ISODate, VaccineDose } from "@/types";
 import { db } from "../firebase";
 import { fire } from "../fire";
 import { childSub } from "../paths";
-import { undefinedToDelete } from "./clearUndefined";
+import { undefinedKeysToDelete } from "./clearUndefined";
 
 function newDoseDoc(fid: string, cid: string, seriesId: string, d: DoseDraft): Omit<VaccineDose, "id"> {
   return {
@@ -45,6 +45,8 @@ export function createEpiSeries(fid: string, cid: string, birthDate: ISODate) {
   fire(batch.commit());
 }
 
+const DOSE_OPTIONAL_KEYS = ["brand", "lotNo", "amount", "site", "givenBy", "place", "notes"] as const;
+
 export function updateDose(
   fid: string,
   cid: string,
@@ -52,7 +54,8 @@ export function updateDose(
   patch: Partial<Omit<VaccineDose, "id" | "familyId" | "childId">>,
 ) {
   // familyId/childId ส่งซ้ำเพื่อให้ผ่าน rules (request.resource.data ต้องมี)
-  fire(updateDoc(doc(childSub(fid, cid, "vaccineDoses"), doseId), { ...undefinedToDelete(patch), familyId: fid, childId: cid }));
+  // ลบ field เฉพาะ key ตัวเลือกที่ส่งมาเป็น undefined — key ที่ไม่ได้ส่งมาคงเดิม
+  fire(updateDoc(doc(childSub(fid, cid, "vaccineDoses"), doseId), { ...undefinedKeysToDelete(patch, DOSE_OPTIONAL_KEYS), familyId: fid, childId: cid }));
 }
 
 export function applyDueDates(fid: string, cid: string, updates: { id: string; dueDate: ISODate }[]) {

@@ -32,6 +32,7 @@ type Extra = Record<(typeof FIELDS)[number][0], string>;
 export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpenChange }: Props) {
   const uid = useId();
   const [given, setGiven] = useState(true);
+  const [givenUnknown, setGivenUnknown] = useState(false);
   const [givenDate, setGivenDate] = useState(todayISO());
   const [dueDate, setDueDate] = useState("");
   const [extra, setExtra] = useState<Extra>({ brand: "", lotNo: "", amount: "", site: "", givenBy: "", place: "", notes: "" });
@@ -39,8 +40,11 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
 
   useEffect(() => {
     if (!dose) return;
-    setGiven(true);
-    setGivenDate(dose.givenDate ?? todayISO());
+    // เข็มที่ถึงกำหนดแล้วเดาว่ากำลังจะบันทึกว่าฉีด; เข็มที่ยังไม่ถึงกำหนดไม่ติ๊กให้ (กัน "ฉีดแล้ว" โดยไม่ตั้งใจ)
+    setGiven(dose.given || (dose.dueDate !== null && dose.dueDate <= todayISO()));
+    const unknown = dose.given && (dose.givenDateUnknown || !dose.givenDate);
+    setGivenUnknown(unknown);
+    setGivenDate(unknown ? "" : dose.givenDate ?? todayISO());
     setDueDate(dose.dueDate ?? "");
     setExtra({
       brand: dose.brand ?? "", lotNo: dose.lotNo ?? "", amount: dose.amount ?? "", site: dose.site ?? "",
@@ -55,7 +59,19 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
     if (!dose) return;
     const trimmed = Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, v.trim() || undefined])) as Partial<Extra>;
     if (!given) {
-      updateDose(fid, child.id, dose.id, { dueDate: dueDate || null, ...trimmed });
+      if (dose.given) {
+        if (!confirm("ยกเลิกการบันทึกว่าฉีดแล้วสำหรับเข็มนี้?")) return;
+        updateDose(fid, child.id, dose.id, { given: false, givenDate: null, givenDateUnknown: false, dueDate: dueDate || null, ...trimmed });
+      } else {
+        updateDose(fid, child.id, dose.id, { dueDate: dueDate || null, ...trimmed });
+      }
+      onOpenChange(false);
+      return;
+    }
+    if (givenUnknown) {
+      updateDose(fid, child.id, dose.id, {
+        given: true, givenDate: null, givenDateUnknown: true, dueDate: dueDate || dose.dueDate, ...trimmed,
+      });
       onOpenChange(false);
       return;
     }
@@ -84,6 +100,11 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
             <input type="checkbox" checked={given} onChange={(e) => { setGiven(e.target.checked); setError(null); }} /> ฉีดแล้ว
           </label>
           {given && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={givenUnknown} onChange={(e) => { setGivenUnknown(e.target.checked); setError(null); }} /> ไม่ทราบวันที่ฉีด
+            </label>
+          )}
+          {given && !givenUnknown && (
             <div className="space-y-1">
               <Label htmlFor={`${uid}-givenDate`}>วันที่ฉีด</Label>
               <Input id={`${uid}-givenDate`} type="date" value={givenDate} onChange={(e) => { setGivenDate(e.target.value); setError(null); }} />

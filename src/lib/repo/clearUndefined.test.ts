@@ -1,6 +1,6 @@
 import { deleteField, type FieldValue } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
-import { undefinedToDelete } from "./clearUndefined";
+import { undefinedKeysToDelete, undefinedToDelete } from "./clearUndefined";
 
 const isDelete = (v: unknown) => (v as FieldValue).isEqual(deleteField());
 
@@ -33,5 +33,28 @@ describe("undefinedToDelete", () => {
 
   it("with keys, does not touch listed keys that have a value", () => {
     expect(undefinedToDelete({ a: "x" }, ["a"])).toEqual({ a: "x" });
+  });
+});
+
+describe("undefinedKeysToDelete", () => {
+  it("converts only listed keys that are present with value undefined", () => {
+    const out = undefinedKeysToDelete({ brand: undefined, lotNo: "L1", dueDate: undefined, given: true }, ["brand", "lotNo", "site"]);
+    expect(isDelete(out.brand)).toBe(true);
+    expect(out.lotNo).toBe("L1");
+    expect(out.given).toBe(true);
+  });
+
+  it("does NOT delete listed keys that are absent from the patch", () => {
+    const out = undefinedKeysToDelete({ given: true }, ["brand", "site"]);
+    expect("brand" in out).toBe(false);
+    expect("site" in out).toBe(false);
+    expect(Object.keys(out)).toEqual(["given"]);
+  });
+
+  it("leaves unlisted undefined keys untouched (not converted)", () => {
+    const out = undefinedKeysToDelete({ dueDate: undefined, brand: undefined }, ["brand"]);
+    expect("dueDate" in out).toBe(true);
+    expect(out.dueDate).toBeUndefined();
+    expect(isDelete(out.brand)).toBe(true);
   });
 });

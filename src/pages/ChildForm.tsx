@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ErrorState from "@/components/ErrorState";
-import { useChild } from "@/hooks/data";
+import { EPI_TEMPLATE } from "@/data/epi";
+import { recomputeEpiDueDates } from "@/domain/schedule";
+import { useChild, useDoses, useSeries } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { todayISO } from "@/domain/dates";
 import { childSchema, firstError } from "@/domain/validation";
 import { createChild, updateChild } from "@/lib/repo/children";
-import { createEpiSeries } from "@/lib/repo/vaccines";
+import { applyDueDates, createEpiSeries } from "@/lib/repo/vaccines";
 import type { Hospital, Sex } from "@/types";
 
 const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -23,6 +25,8 @@ export default function ChildForm() {
   const editing = Boolean(id);
   const { data: existing, loading, error: loadError } = useChild(fid, id ?? null);
 
+  const { data: series } = useSeries(fid, id ?? null);
+  const { data: allDoses } = useDoses(fid, id ?? null);
   const [name, setName] = useState("");
   const [nickname, setNickname] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -55,7 +59,15 @@ export default function ChildForm() {
     const msg = firstError(r);
     if (msg || !r.success) return setError(msg);
     if (editing && id) {
+      const birthChanged = existing ? r.data.birthDate !== existing.birthDate : false;
       updateChild(fid, id, r.data);
+      if (birthChanged) {
+        const epiIds = new Set(series.filter((s) => s.source === "epi").map((s) => s.id));
+        const updates = recomputeEpiDueDates(allDoses.filter((d) => epiIds.has(d.seriesId)), EPI_TEMPLATE, r.data.birthDate);
+        if (updates.length && confirm(`วันเกิดเปลี่ยน — ปรับวันนัดวัคซีน EPI ที่ยังไม่ได้ฉีด ${updates.length} เข็มตามวันเกิดใหม่ไหม?`)) {
+          applyDueDates(fid, id, updates);
+        }
+      }
       nav(`/children/${id}`);
     } else {
       const cid = createChild(fid, r.data);

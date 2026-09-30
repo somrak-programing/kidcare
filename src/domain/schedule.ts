@@ -84,6 +84,23 @@ export function shiftRemainingDoses(
     .map((d) => ({ id: d.id, dueDate: addDaysISO(d.dueDate!, days) }));
 }
 
+export function recomputeEpiDueDates(
+  doses: Pick<VaccineDose, "id" | "vaccineCode" | "doseNo" | "given" | "dueDate">[],
+  items: EpiTemplateItem[],
+  birthDate: ISODate,
+): { id: string; dueDate: ISODate }[] {
+  const ageByKey = new Map(items.map((it) => [`${it.vaccineCode}#${it.doseNo}`, it.ageMonths]));
+  const out: { id: string; dueDate: ISODate }[] = [];
+  for (const d of doses) {
+    if (d.given || !d.vaccineCode) continue;
+    const age = ageByKey.get(`${d.vaccineCode}#${d.doseNo}`);
+    if (age === undefined) continue;
+    const dueDate = addMonthsISO(birthDate, age);
+    if (dueDate !== d.dueDate) out.push({ id: d.id, dueDate });
+  }
+  return out;
+}
+
 export function parseDayOffsets(text: string): { offsets: number[] } | { error: string } {
   const tokens = text.split(",").map((s) => s.trim()).filter((s) => s !== "");
   if (tokens.length === 0) return { error: "กรอกตัวเลขวันอย่างน้อย 1 ค่า" };

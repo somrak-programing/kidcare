@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckSquare, Plus, Trash2 } from "lucide-react";
+import { CalendarPlus, CheckSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BulkGivenDialog from "@/components/BulkGivenDialog";
 import CalendarButtons from "@/components/CalendarButtons";
@@ -10,16 +10,18 @@ import StatusBadge from "@/components/StatusBadge";
 import { useDoses, useSeries } from "@/hooks/data";
 import { formatThaiDate, todayISO } from "@/domain/dates";
 import { doseStatus } from "@/domain/doseStatus";
-import { deleteSeries } from "@/lib/repo/vaccines";
+import { calendarName } from "@/domain/names";
+import { createEpiSeries, deleteSeries } from "@/lib/repo/vaccines";
 import type { Child, VaccineDose } from "@/types";
 
 export default function VaccineTimeline({ fid, child }: { fid: string; child: Child }) {
-  const { data: series, error: e1 } = useSeries(fid, child.id);
+  const { data: series, loading: seriesLoading, error: e1 } = useSeries(fid, child.id);
   const { data: doses, error: e2 } = useDoses(fid, child.id);
   const [active, setActive] = useState<VaccineDose | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const today = todayISO();
-  const who = child.nickname || child.name;
+  const who = calendarName(child);
+  const hasEpi = series.some((s) => s.source === "epi");
 
   const bySeries = useMemo(() => {
     const m = new Map<string, VaccineDose[]>();
@@ -40,6 +42,12 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
       <div className="flex flex-wrap gap-2">
         <Button asChild size="sm"><Link to={`/children/${child.id}/series/new`}><Plus size={14} /> เพิ่มชุดวัคซีน</Link></Button>
         <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}><CheckSquare size={14} /> ติ๊กเข็มที่ฉีดแล้ว</Button>
+        {!seriesLoading && !hasEpi && (
+          <Button size="sm" variant="outline"
+            onClick={() => confirm("สร้างตารางวัคซีนพื้นฐาน (EPI) จากวันเกิดของเด็ก?") && createEpiSeries(fid, child.id, child.birthDate)}>
+            <CalendarPlus size={14} /> สร้างตาราง EPI
+          </Button>
+        )}
       </div>
 
       {ordered.length === 0 && <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลวัคซีน</p>}

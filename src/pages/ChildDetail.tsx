@@ -8,6 +8,7 @@ import CalendarButtons from "@/components/CalendarButtons";
 import { useChild, useOpenAppointments } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { ageText, formatThaiDate, todayISO } from "@/domain/dates";
+import { calendarName } from "@/domain/names";
 
 export default function ChildDetail() {
   const { id: cid = "" } = useParams();
@@ -48,7 +49,7 @@ export default function ChildDetail() {
 
       <section id="appointments" className="space-y-2">
         <h2 className="font-semibold">นัดหมาย</h2>
-        <ChildAppointments fid={fid} cid={cid} who={child.nickname || child.name} />
+        <ChildAppointments fid={fid} cid={cid} who={calendarName(child)} />
       </section>
     </div>
   );

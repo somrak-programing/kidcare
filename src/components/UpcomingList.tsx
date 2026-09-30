@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CalendarButtons from "@/components/CalendarButtons";
 import { formatThaiDate, todayISO } from "@/domain/dates";
+import { calendarName } from "@/domain/names";
 import { groupUpcoming, type UpcomingItem } from "@/domain/upcoming";
 import { setAppointmentDone } from "@/lib/repo/appointments";
 import type { Child } from "@/types";
@@ -12,6 +13,10 @@ export default function UpcomingList({ fid, items, kids }: { fid: string; items:
   const who = (cid: string) => {
     const c = kids.find((x) => x.id === cid);
     return c ? c.nickname || c.name || "ไม่ระบุ" : "ไม่ระบุ";
+  };
+  const calWho = (cid: string) => {
+    const c = kids.find((x) => x.id === cid);
+    return (c && calendarName(c)) || "ไม่ระบุ";
   };
   const sections: [string, UpcomingItem[], string][] = [
     ["เลยกำหนด", g.overdue, "border-red-500/60"],
@@ -32,7 +37,7 @@ export default function UpcomingList({ fid, items, kids }: { fid: string; items:
                   <p className="text-muted-foreground">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
                 </Link>
                 <div className="flex flex-wrap gap-1">
-                  <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${who(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
+                  <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
                   {it.kind === "appointment" && (
                     <Button type="button" variant="ghost" size="sm" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}><Check size={14} /> ไปแล้ว</Button>
                   )}

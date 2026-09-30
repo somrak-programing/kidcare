@@ -69,7 +69,10 @@ export default function NewSeries() {
 
   function onSave() {
     if (!valid) return;
-    createSeriesWithDoses(fid, cid, { name: name.trim(), source: "custom", templateKey: tpl.key, reason: reason.trim() || undefined, doses: preview });
+    // ถ้าผู้ใช้แก้ชื่อจนต่างจากชื่อแม่แบบ อย่าอ้างรหัสวัคซีนของแม่แบบ
+    const renamed = name.trim() !== tpl.name.trim();
+    const doses = renamed ? preview.map((d) => ({ ...d, vaccineCode: undefined })) : preview;
+    createSeriesWithDoses(fid, cid, { name: name.trim(), source: "custom", templateKey: tpl.key, reason: reason.trim() || undefined, doses });
     nav(`/children/${cid}`);
   }
 

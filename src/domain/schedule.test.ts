@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generateCustomDoses, generateEpiSeries, parseDayOffsets, shiftRemainingDoses, type EpiTemplateItem } from "./schedule";
+import { generateCustomDoses, generateEpiSeries, parseDayOffsets, recomputeEpiDueDates, shiftRemainingDoses, type EpiTemplateItem } from "./schedule";
 
 const FIXTURE: EpiTemplateItem[] = [
   { vaccineCode: "BCG", vaccineName: "BCG", doseNo: 1, ageMonths: 0 },
@@ -94,5 +94,31 @@ describe("parseDayOffsets", () => {
   });
   test("rejects large offset 999999999", () => {
     expect(parseDayOffsets("0,999999999")).toHaveProperty("error");
+  });
+});
+
+describe("recomputeEpiDueDates", () => {
+  const base = { doseNo: 1, given: false };
+  test("includes not-given dose whose due date changes", () => {
+    const r = recomputeEpiDueDates([{ id: "a", vaccineCode: "OPV", doseNo: 1, given: false, dueDate: "2025-03-31" }], FIXTURE, "2025-02-28");
+    expect(r).toEqual([{ id: "a", dueDate: "2025-04-28" }]);
+  });
+  test("excludes given doses", () => {
+    expect(recomputeEpiDueDates([{ id: "a", vaccineCode: "OPV", doseNo: 1, given: true, dueDate: "2025-03-31" }], FIXTURE, "2025-02-28")).toEqual([]);
+  });
+  test("excludes doses with no matching template code/dose", () => {
+    const r = recomputeEpiDueDates([
+      { id: "a", vaccineCode: null, ...base, dueDate: null },
+      { id: "b", vaccineCode: "XYZ", ...base, dueDate: null },
+      { id: "c", vaccineCode: "OPV", doseNo: 9, given: false, dueDate: null },
+    ] as never, FIXTURE, "2025-02-28");
+    expect(r).toEqual([]);
+  });
+  test("excludes doses whose due date is unchanged", () => {
+    expect(recomputeEpiDueDates([{ id: "a", vaccineCode: "OPV", doseNo: 2, given: false, dueDate: "2025-06-28" }], FIXTURE, "2025-02-28")).toEqual([]);
+  });
+  test("includes not-given dose that has no due date yet", () => {
+    expect(recomputeEpiDueDates([{ id: "a", vaccineCode: "BCG", doseNo: 1, given: false, dueDate: null }], FIXTURE, "2025-02-28"))
+      .toEqual([{ id: "a", dueDate: "2025-02-28" }]);
   });
 });

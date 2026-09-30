@@ -16,12 +16,12 @@ export function useAllergies(fid: string, cid: string) {
   return useCollection<Allergy>(childSub(fid, cid, "allergies"), `allergies/${fid}/${cid}`);
 }
 
-export function useSeries(fid: string, cid: string) {
-  return useCollection<VaccineSeries>(childSub(fid, cid, "vaccineSeries"), `series/${fid}/${cid}`);
+export function useSeries(fid: string, cid: string | null) {
+  return useCollection<VaccineSeries>(cid ? childSub(fid, cid, "vaccineSeries") : null, `series/${fid}/${cid ?? "-"}`);
 }
 
-export function useDoses(fid: string, cid: string) {
-  const r = useCollection<VaccineDose>(childSub(fid, cid, "vaccineDoses"), `doses/${fid}/${cid}`);
+export function useDoses(fid: string, cid: string | null) {
+  const r = useCollection<VaccineDose>(cid ? childSub(fid, cid, "vaccineDoses") : null, `doses/${fid}/${cid ?? "-"}`);
   const data = useMemo(() => [...r.data].sort((a, b) => a.doseNo - b.doseNo), [r.data]);
   return { ...r, data };
 }
