@@ -32,7 +32,7 @@ export function ChildSummaryCard({ fid, child, doses, today }: { fid: string; ch
   ].filter((s) => s.n > 0);
   const name = child.nickname || child.name;
   return (
-    <Link to={`/children/${child.id}`} aria-label={`ดูรายละเอียด ${name}`} className="block rounded-lg border bg-card p-3">
+    <Link to={`/children/${child.id}`} className="block rounded-lg border bg-card p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-bold">{name}</p>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Appointment, VaccineDose } from "@/types";
-import { ageTimeline, childColor, childProgress, monthlyUpcoming, summarize, toUpcomingItems } from "./dashboard";
+import { ageTimeline, childColor, childProgress, monthlyUpcoming, pickHomeUpcoming, summarize, toUpcomingItems } from "./dashboard";
 
 const T = "2026-09-30";
 
@@ -128,4 +128,25 @@ describe("ageTimeline", () => {
 test("childColor is fixed by index", () => {
   expect(childColor(0)).toBe("#3987e5");
   expect(childColor(1)).toBe("#d95926");
+});
+
+describe("pickHomeUpcoming", () => {
+  test("soon first, then most recent overdue, then later", () => {
+    const items = toUpcomingItems(
+      [
+        ...["2026-03-01", "2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01"].map((dueDate) => dose({ dueDate, vaccineName: `old-${dueDate}` })),
+        dose({ dueDate: "2026-10-30", vaccineName: "later" }),
+      ],
+      [appt({ date: "2026-10-01", purpose: "พรุ่งนี้" })],
+    );
+    const r = pickHomeUpcoming(items, T);
+    expect(r.map((i) => i.title)).toEqual(["พรุ่งนี้", "old-2026-08-01 เข็ม 1", "old-2026-07-01 เข็ม 1", "old-2026-06-01 เข็ม 1", "old-2026-05-01 เข็ม 1"]);
+  });
+  test("without soon/overdue items returns earliest later items", () => {
+    const items = toUpcomingItems(
+      ["2026-12-01", "2026-11-01", "2026-11-15", "2027-01-01", "2026-10-20", "2027-02-01"].map((dueDate) => dose({ dueDate })),
+      [],
+    );
+    expect(pickHomeUpcoming(items, T, 3).map((i) => i.date)).toEqual(["2026-10-20", "2026-11-01", "2026-11-15"]);
+  });
 });

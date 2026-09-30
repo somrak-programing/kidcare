@@ -11,7 +11,7 @@ import { AgeTimeline } from "@/components/dashboard/AgeTimeline";
 import { useChildren, useOpenAppointments, useFamilyDoses } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { todayISO } from "@/domain/dates";
-import { ageTimeline, childColor, monthlyUpcoming, summarize, toUpcomingItems } from "@/domain/dashboard";
+import { ageTimeline, childColor, monthlyUpcoming, pickHomeUpcoming, summarize, toUpcomingItems } from "@/domain/dashboard";
 import { byDateTime } from "@/domain/upcoming";
 
 const PREVIEW_COUNT = 5;
@@ -35,6 +35,7 @@ export default function Home() {
         id: c.id,
         name: c.nickname || c.name,
         data: ageTimeline(c.birthDate, doses.filter((d) => d.childId === c.id), today),
+        hasDoses: doses.some((d) => d.childId === c.id),
       })),
     [children, doses, today],
   );
@@ -74,7 +75,7 @@ export default function Home() {
           <h2 className="font-semibold">นัดที่รออยู่</h2>
           <Button asChild size="sm" variant="outline"><Link to="/appointments/new"><CalendarPlus size={14} /> นัดหมอ</Link></Button>
         </div>
-        <UpcomingList fid={fid} items={items.slice(0, PREVIEW_COUNT)} kids={children} />
+        <UpcomingList fid={fid} items={pickHomeUpcoming(items, today, PREVIEW_COUNT)} kids={children} />
         {items.length > PREVIEW_COUNT && (
           <Button asChild size="sm" variant="link"><Link to="/appointments">ดูทั้งหมด ({items.length})</Link></Button>
         )}

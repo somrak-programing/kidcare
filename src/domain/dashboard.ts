@@ -16,6 +16,19 @@ export function toUpcomingItems(doses: VaccineDose[], appts: Appointment[]): Upc
   ];
 }
 
+/** Home preview order: due within 7 days, then overdue (most recent first), then later. */
+export function pickHomeUpcoming(items: UpcomingItem[], today: ISODate, n = 5): UpcomingItem[] {
+  const soon: UpcomingItem[] = [];
+  const overdue: UpcomingItem[] = [];
+  const later: UpcomingItem[] = [];
+  for (const it of items) {
+    if (it.date < today) overdue.push(it);
+    else if (diffDays(it.date, today) <= 7) soon.push(it);
+    else later.push(it);
+  }
+  return [...soon.sort(byDateTime), ...overdue.sort((a, b) => byDateTime(b, a)), ...later.sort(byDateTime)].slice(0, n);
+}
+
 export interface DashboardSummary {
   overdueCount: number;
   next: { date: ISODate; daysAway: number; childId: string; title: string } | null;

@@ -7,6 +7,7 @@ interface Row {
   id: string;
   name: string;
   data: AgeTimelineData;
+  hasDoses?: boolean;
 }
 
 const W = 360;
@@ -82,7 +83,7 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
   const ticks = Array.from({ length: Math.floor(maxAge / tickStep) + 1 }, (_, i) => i * tickStep);
   const groupsByRow = rows.map((r) => groupPoints(r.data.points));
   const groupX = (g: Point[]) => g.reduce((s, p) => s + x(p.ageMonths), 0) / g.length;
-  /** Hit radius per group; shrink neighbours whose centers are closer than HIT_CLOSE so targets don't overlap. */
+  /** Hit radius per group; neighbours closer than HIT_CLOSE shrink to at least HIT_MIN_R, so targets may still overlap for dense early doses (the tooltip lists the whole group; the sr-only table and keyboard cover all). */
   const hitRadii = (groups: Point[][]) => {
     const radii = groups.map(() => HIT_R);
     for (let k = 0; k + 1 < groups.length; k++) {
@@ -161,21 +162,22 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
                   {shortName(r.name)}
                 </text>
                 <line x1={X0} x2={X_END} y1={cy} y2={cy} stroke="currentColor" opacity={0.15} strokeWidth={2} strokeLinecap="round" />
-                {r.data.points.length === 0 && (
+                {r.data.points.length === 0 ? (
                   <g className="text-muted-foreground">
                     <text x={X0 + 4} y={cy + 4} fontSize={11} fill="currentColor">
-                      ยังไม่มีข้อมูลวัคซีน
+                      {r.hasDoses ? "ไม่มีวันที่ให้แสดง" : "ยังไม่มีข้อมูลวัคซีน"}
                     </text>
                   </g>
+                ) : (
+                  <line
+                    x1={x(r.data.todayAgeMonths)}
+                    x2={x(r.data.todayAgeMonths)}
+                    y1={cy - 12}
+                    y2={cy + 12}
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  />
                 )}
-                <line
-                  x1={x(r.data.todayAgeMonths)}
-                  x2={x(r.data.todayAgeMonths)}
-                  y1={cy - 12}
-                  y2={cy + 12}
-                  stroke="currentColor"
-                  strokeWidth={2}
-                />
                 {groupsByRow[i].map((g) => {
                   const n = g.length;
                   return (
