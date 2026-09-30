@@ -34,6 +34,7 @@ export default defineConfig({
             handler: "CacheFirst",
             options: {
               cacheName: "google-fonts",
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
