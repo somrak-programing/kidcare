@@ -59,13 +59,14 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
       onOpenChange(false);
       return;
     }
-    const err = validateGivenDate(givenDate, child.birthDate, todayISO());
+    const err = !givenDate ? "กรุณาใส่วันที่ฉีด" : validateGivenDate(givenDate, child.birthDate, todayISO());
     if (err) return setError(err);
+    const effectiveDue = dueDate || dose.dueDate;
     updateDose(fid, child.id, dose.id, {
-      given: true, givenDate, givenDateUnknown: false, dueDate: dueDate || dose.dueDate, ...trimmed,
+      given: true, givenDate, givenDateUnknown: false, dueDate: effectiveDue, ...trimmed,
     });
-    const late = dose.dueDate ? diffDays(givenDate, dose.dueDate) : 0;
-    if (late > 0) {
+    const late = effectiveDue ? diffDays(givenDate, effectiveDue) : 0;
+    if (!dose.given && late > 0) {
       const updates = shiftRemainingDoses(doses, dose.doseNo, late);
       if (updates.length && confirm(`ฉีดช้ากว่านัด ${late} วัน — เลื่อนนัดเข็มที่เหลือ (${updates.length} เข็ม) ออกไป ${late} วันไหม?`)) {
         applyDueDates(fid, child.id, updates);

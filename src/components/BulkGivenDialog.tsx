@@ -16,6 +16,7 @@ export default function BulkGivenDialog({ fid, child, doses, open, onOpenChange 
   const candidates = doses.filter((d) => !d.given && d.dueDate && d.dueDate <= today);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [error, setError] = useState<string | null>(null);
+  const rowOf = (id: string): Row => rows[id] ?? { checked: false, date: "" };
 
   useEffect(() => {
     if (open) setRows(Object.fromEntries(candidates.map((d) => [d.id, { checked: false, date: "" }])));
@@ -24,7 +25,7 @@ export default function BulkGivenDialog({ fid, child, doses, open, onOpenChange 
   }, [open]);
 
   function onSave() {
-    const items = candidates.filter((d) => rows[d.id]?.checked).map((d) => ({ id: d.id, givenDate: rows[d.id].date || null }));
+    const items = candidates.filter((d) => rowOf(d.id).checked).map((d) => ({ id: d.id, givenDate: rowOf(d.id).date || null }));
     for (const it of items) {
       const err = it.givenDate ? validateGivenDate(it.givenDate, child.birthDate, today) : null;
       if (err) return setError(err);
@@ -44,15 +45,15 @@ export default function BulkGivenDialog({ fid, child, doses, open, onOpenChange 
             {candidates.map((d) => (
               <li key={d.id} className="space-y-1 rounded border p-2 text-sm">
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={rows[d.id]?.checked ?? false}
-                    onChange={(e) => setRows({ ...rows, [d.id]: { ...rows[d.id], checked: e.target.checked } })} />
+                  <input type="checkbox" checked={rowOf(d.id).checked}
+                    onChange={(e) => setRows({ ...rows, [d.id]: { ...rowOf(d.id), checked: e.target.checked } })} />
                   {d.vaccineName} เข็ม {d.doseNo} <span className="text-muted-foreground">(กำหนด {formatThaiDate(d.dueDate!)})</span>
                 </label>
-                {rows[d.id]?.checked && (
+                {rowOf(d.id).checked && (
                   <div className="flex items-center gap-2 pl-6">
-                    <Input type="date" className="h-8" value={rows[d.id].date}
+                    <Input type="date" className="h-8" value={rowOf(d.id).date}
                       aria-label={`วันที่ฉีด ${d.vaccineName} เข็ม ${d.doseNo}`}
-                      onChange={(e) => setRows({ ...rows, [d.id]: { ...rows[d.id], date: e.target.value } })} />
+                      onChange={(e) => setRows({ ...rows, [d.id]: { ...rowOf(d.id), date: e.target.value } })} />
                     <span className="text-xs text-muted-foreground">เว้นว่าง = ไม่ทราบวันที่</span>
                   </div>
                 )}

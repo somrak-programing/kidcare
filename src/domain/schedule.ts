@@ -83,3 +83,15 @@ export function shiftRemainingDoses(
     .sort((a, b) => a.doseNo - b.doseNo)
     .map((d) => ({ id: d.id, dueDate: addDaysISO(d.dueDate!, days) }));
 }
+
+export function parseDayOffsets(text: string): { offsets: number[] } | { error: string } {
+  const tokens = text.split(",").map((s) => s.trim()).filter((s) => s !== "");
+  if (tokens.length === 0) return { error: "กรอกตัวเลขวันอย่างน้อย 1 ค่า" };
+  if (!tokens.every((t) => /^\d+$/.test(t))) return { error: "ใช้ได้เฉพาะจำนวนเต็มตั้งแต่ 0 ขึ้นไป" };
+  const offsets = tokens.map(Number);
+  if (offsets[0] !== 0) return { error: "เข็มแรกต้องเป็นวันที่ 0" };
+  for (let i = 1; i < offsets.length; i++) {
+    if (offsets[i] <= offsets[i - 1]) return { error: "วันต้องเรียงจากน้อยไปมากและไม่ซ้ำ" };
+  }
+  return { offsets };
+}

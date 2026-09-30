@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CUSTOM_TEMPLATES } from "@/data/customTemplates";
 import { formatThaiDate, todayISO } from "@/domain/dates";
-import { generateCustomDoses } from "@/domain/schedule";
+import { generateCustomDoses, parseDayOffsets } from "@/domain/schedule";
+import { validateGivenDate } from "@/domain/validation";
+import { useChild } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { createSeriesWithDoses } from "@/lib/repo/vaccines";
 
@@ -15,6 +17,7 @@ export default function NewSeries() {
   const { id: cid = "" } = useParams();
   const fid = useFamilyId();
   const nav = useNavigate();
+  const { data: child } = useChild(fid, cid);
   const uid = useId();
   const [tplKey, setTplKey] = useState(CUSTOM_TEMPLATES[0].key);
   const tpl = CUSTOM_TEMPLATES.find((t) => t.key === tplKey)!;
@@ -32,12 +35,28 @@ export default function NewSeries() {
     setAnchorDose(1);
   }
 
-  const offsets = useMemo(
-    () => offsetsText.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n >= 0),
-    [offsetsText],
-  );
-  const valid = Boolean(name.trim() && offsets.length > 0 && anchorDose >= 1 && anchorDose <= offsets.length && anchorDate);
-  const preview = valid ? generateCustomDoses({ name: name.trim(), vaccineCode: tpl.vaccineCode, dayOffsets: offsets }, { doseNo: anchorDose, date: anchorDate }) : [];
+  const parsed = useMemo(() => parseDayOffsets(offsetsText), [offsetsText]);
+  const offsetsError = "error" in parsed ? parsed.error : null;
+  const offsets = useMemo(() => ("offsets" in parsed ? parsed.offsets : []), [parsed]);
+  const effectiveAnchor = Math.min(Math.max(anchorDose, 1), Math.max(offsets.length, 1));
+  const baseValid = Boolean(name.trim() && !offsetsError && offsets.length > 0 && anchorDate);
+  const preview = baseValid
+    ? generateCustomDoses({ name: name.trim(), vaccineCode: tpl.vaccineCode, dayOffsets: offsets }, { doseNo: effectiveAnchor, date: anchorDate })
+    : [];
+  // เข็มก่อนเข็มที่ทราบวันที่จะถูกบันทึกว่าฉีดแล้วด้วยวันที่คำนวณ — ต้องไม่ก่อนวันเกิด/ไม่อยู่ในอนาคต
+  const givenPreview = preview.filter((d) => d.given && d.givenDate);
+  let anchorError: string | null = null;
+  if (givenPreview.length > 0) {
+    if (!child) anchorError = "กำลังโหลดข้อมูลเด็ก…";
+    else {
+      const today = todayISO();
+      for (const d of givenPreview) {
+        anchorError = validateGivenDate(d.givenDate!, child.birthDate, today);
+        if (anchorError) break;
+      }
+    }
+  }
+  const valid = baseValid && !anchorError;
 
   function onSave() {
     if (!valid) return;
@@ -61,11 +80,12 @@ export default function NewSeries() {
       <div className="space-y-1">
         <Label htmlFor={`${uid}-offsets`}>วันที่ของแต่ละเข็ม นับจากเข็มแรก (วัน, คั่นด้วยจุลภาค)</Label>
         <Input id={`${uid}-offsets`} value={offsetsText} onChange={(e) => setOffsetsText(e.target.value)} />
+        {offsetsError && <p role="alert" className="text-sm text-destructive">{offsetsError}</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor={`${uid}-anchor`}>เข็มที่ทราบวันที่</Label>
-          <select id={`${uid}-anchor`} className={selectCls} value={anchorDose} onChange={(e) => setAnchorDose(Number(e.target.value))}>
+          <select id={`${uid}-anchor`} className={selectCls} value={effectiveAnchor} onChange={(e) => setAnchorDose(Number(e.target.value))}>
             {offsets.map((_, i) => <option key={i} value={i + 1}>เข็ม {i + 1}</option>)}
           </select>
         </div>
@@ -74,6 +94,7 @@ export default function NewSeries() {
           <Input id={`${uid}-anchorDate`} type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} />
         </div>
       </div>
+      {anchorError && <p role="alert" className="text-sm text-destructive">{anchorError}</p>}
       <div className="space-y-1">
         <Label htmlFor={`${uid}-reason`}>เหตุผล (เช่น ถูกสุนัขกัด)</Label>
         <Input id={`${uid}-reason`} value={reason} onChange={(e) => setReason(e.target.value)} />

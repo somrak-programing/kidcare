@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generateCustomDoses, generateEpiSeries, shiftRemainingDoses, type EpiTemplateItem } from "./schedule";
+import { generateCustomDoses, generateEpiSeries, parseDayOffsets, shiftRemainingDoses, type EpiTemplateItem } from "./schedule";
 
 const FIXTURE: EpiTemplateItem[] = [
   { vaccineCode: "BCG", vaccineName: "BCG", doseNo: 1, ageMonths: 0 },
@@ -73,5 +73,17 @@ describe("shiftRemainingDoses", () => {
       { id: "c", dueDate: "2026-10-08" },
       { id: "e", dueDate: "2026-10-29" },
     ]);
+  });
+});
+
+describe("parseDayOffsets", () => {
+  test("parses a valid list", () => {
+    expect(parseDayOffsets("0, 3, 7, 14, 28")).toEqual({ offsets: [0, 3, 7, 14, 28] });
+  });
+  test("ignores trailing empty tokens", () => {
+    expect(parseDayOffsets("0,3,")).toEqual({ offsets: [0, 3] });
+  });
+  test.each(["", "0,-3", "0,1.5", "3,7", "0,7,3", "0,3,3"])("rejects %j", (text) => {
+    expect(parseDayOffsets(text)).toHaveProperty("error");
   });
 });

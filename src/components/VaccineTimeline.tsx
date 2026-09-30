@@ -50,7 +50,7 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
           <div key={s.id} className="rounded-lg border">
             <div className="flex items-center justify-between border-b px-3 py-2">
               <p className="text-sm font-semibold">{s.name}</p>
-              <Button variant="ghost" size="icon" aria-label="ลบชุด"
+              <Button variant="ghost" size="icon" aria-label={`ลบชุด ${s.name}`}
                 onClick={() => confirm(`ลบชุด "${s.name}" และทุกเข็ม?`) && deleteSeries(fid, child.id, s.id, list.map((d) => d.id))}>
                 <Trash2 size={14} />
               </Button>
@@ -60,7 +60,7 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
                 const st = doseStatus(d, today);
                 return (
                   <li key={d.id} className="space-y-1 px-3 py-2 text-sm">
-                    <button className="flex w-full items-center justify-between text-left" onClick={() => setActive(d)}>
+                    <button className="flex w-full items-center justify-between text-left" aria-label={`${s.name} เข็ม ${d.doseNo}`} onClick={() => setActive(d)}>
                       <span>เข็ม {d.doseNo}</span>
                       <span className="flex items-center gap-2">
                         <span className="text-muted-foreground">
