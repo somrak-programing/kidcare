@@ -1,0 +1,46 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 24% 8%;
+    --foreground: 220 20% 92%;
+    --card: 222 22% 11%;
+    --card-foreground: 220 20% 92%;
+    --primary: 158 64% 52%;
+    --primary-foreground: 158 70% 8%;
+    --secondary: 222 18% 16%;
+    --secondary-foreground: 220 20% 92%;
+    --muted: 222 18% 16%;
+    --muted-foreground: 220 12% 58%;
+    --accent: 190 80% 50%;
+    --accent-foreground: 190 80% 8%;
+    --destructive: 350 75% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 16% 20%;
+    --input: 222 16% 20%;
+    --ring: 158 64% 52%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image:
+      radial-gradient(900px 500px at 100% -10%, hsl(190 80% 50% / 0.06), transparent),
+      radial-gradient(700px 500px at -10% 110%, hsl(158 64% 52% / 0.05), transparent);
+    background-attachment: fixed;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+/* scrollbar */
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 99px; }
+::-webkit-scrollbar-track { background: transparent; }

@@ -5,3 +5,7 @@ dist
 worker/.dev.vars
 worker/node_modules
 .wrangler
+dev-dist
+*.tsbuildinfo
+firebase-debug.log
+firestore-debug.log
