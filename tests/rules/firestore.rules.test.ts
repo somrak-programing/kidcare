@@ -22,6 +22,7 @@ beforeEach(async () => {
     await setDoc(doc(db, "families", "fam2"), { name: "F2", ownerUid: "carol", memberUids: ["carol"] });
     await setDoc(doc(db, "families", FID, "children", "c1"), { name: "มะลิ" });
     await setDoc(doc(db, "families", FID, "children", "c1", "vaccineDoses", "d1"), { familyId: FID, childId: "c1", given: false });
+    await setDoc(doc(db, "families", FID, "appointments", "p1"), { familyId: FID, childId: "c1" });
   });
 });
 
@@ -39,10 +40,10 @@ describe("users", () => {
 
 describe("families", () => {
   test("create own family as sole member (batched with user doc)", async () => {
-    const db = as("carol");
+    const db = as("dave");
     const b = writeBatch(db);
-    b.set(doc(db, "families", "fam2"), { name: "C", ownerUid: "carol", memberUids: ["carol"] });
-    b.set(doc(db, "users", "carol"), { familyId: "fam2" });
+    b.set(doc(db, "families", "fam4"), { name: "D", ownerUid: "dave", memberUids: ["dave"] });
+    b.set(doc(db, "users", "dave"), { familyId: "fam4" });
     await assertSucceeds(b.commit());
   });
   test("cannot create family listing other members", async () => {
@@ -139,5 +140,20 @@ describe("outsiders and cross-family access", () => {
   });
   test("dose update keeping familyId/childId succeeds", async () => {
     await assertSucceeds(updateDoc(doc(as("alice"), ...C, "c1", "vaccineDoses", "d1"), { familyId: FID, childId: "c1", given: true }));
+  });
+  test("mallory cannot delete vaccineDose in fam1", async () => {
+    await assertFails(deleteDoc(doc(as("mallory"), ...C, "c1", "vaccineDoses", "d1")));
+  });
+  test("mallory cannot delete appointment in fam1", async () => {
+    await assertFails(deleteDoc(doc(as("mallory"), "families", FID, "appointments", "p1")));
+  });
+  test("alice cannot read fam2", async () => {
+    await assertFails(getDoc(doc(as("alice"), "families", "fam2")));
+  });
+  test("carol cannot read fam1 family doc", async () => {
+    await assertFails(getDoc(doc(as("carol"), "families", FID)));
+  });
+  test("carol cannot update fam1 family doc", async () => {
+    await assertFails(updateDoc(doc(as("carol"), "families", FID), { name: "hacked" }));
   });
 });
