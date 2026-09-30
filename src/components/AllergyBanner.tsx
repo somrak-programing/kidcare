@@ -6,8 +6,17 @@ import type { Severity } from "@/types";
 const SEV: Record<Severity, string> = { mild: "เล็กน้อย", moderate: "ปานกลาง", severe: "รุนแรง" };
 
 export default function AllergyBanner({ fid, cid }: { fid: string; cid: string }) {
-  const { data, loading } = useAllergies(fid, cid);
-  if (loading) return null;
+  const { data, loading, error } = useAllergies(fid, cid);
+  if (loading) return <div className="h-10 animate-pulse rounded-lg bg-muted" aria-busy="true" />;
+  if (error)
+    return (
+      <Link
+        to={`/children/${cid}/allergies`}
+        className="flex items-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-300"
+      >
+        <AlertTriangle size={16} /> โหลดข้อมูลการแพ้ไม่สำเร็จ — ตรวจสอบก่อนให้ยา
+      </Link>
+    );
   if (!data.length)
     return (
       <Link to={`/children/${cid}/allergies`} className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">

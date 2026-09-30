@@ -8,8 +8,8 @@ export function useChildren(fid: string) {
   return useCollection<Child>(query(childrenCol(fid), orderBy("birthDate")), `children/${fid}`);
 }
 
-export function useChild(fid: string, cid: string) {
-  return useDocument<Child>(childDoc(fid, cid), `child/${fid}/${cid}`);
+export function useChild(fid: string, cid: string | null) {
+  return useDocument<Child>(cid ? childDoc(fid, cid) : null, `child/${fid}/${cid ?? "-"}`);
 }
 
 export function useAllergies(fid: string, cid: string) {

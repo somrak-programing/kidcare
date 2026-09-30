@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,31 +13,47 @@ import type { Allergy, AllergyType, Severity } from "@/types";
 
 const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
 const EMPTY = { type: "drug" as AllergyType, substance: "", reaction: "", severity: "moderate" as Severity, notes: "" };
+const SEV: Record<Severity, string> = { mild: "เล็กน้อย", moderate: "ปานกลาง", severe: "รุนแรง" };
 
 export default function Allergies() {
   const { id: cid = "" } = useParams();
   const fid = useFamilyId();
   const { data: child } = useChild(fid, cid);
-  const { data, error } = useAllergies(fid, cid);
+  const { data, loading, error } = useAllergies(fid, cid);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState<string | undefined>();
   const [msg, setMsg] = useState<string | null>(null);
 
+  // If the allergy being edited disappears (deleted here or elsewhere), reset the form.
+  useEffect(() => {
+    if (editId && !loading && !error && !data.some((a) => a.id === editId)) {
+      setForm(EMPTY);
+      setEditId(undefined);
+      setMsg(null);
+    }
+  }, [editId, data, loading, error]);
+
   if (error) return <ErrorState error={error} />;
+  if (loading) return <p className="text-muted-foreground">กำลังโหลด…</p>;
+
+  function resetForm() {
+    setForm(EMPTY);
+    setEditId(undefined);
+    setMsg(null);
+  }
 
   function onSave() {
     const r = allergySchema.safeParse(form);
     const m = firstError(r);
     if (m || !r.success) return setMsg(m);
     saveAllergy(fid, cid, r.data, editId);
-    setForm(EMPTY);
-    setEditId(undefined);
-    setMsg(null);
+    resetForm();
   }
 
   function onEdit(a: Allergy) {
     setForm({ type: a.type, substance: a.substance, reaction: a.reaction, severity: a.severity, notes: a.notes ?? "" });
     setEditId(a.id);
+    setMsg(null);
   }
 
   return (
@@ -48,7 +64,7 @@ export default function Allergies() {
         {data.map((a) => (
           <li key={a.id} className="flex items-start justify-between rounded-lg border p-3">
             <div className="text-sm">
-              <p className="font-semibold">{a.substance}</p>
+              <p className="font-semibold">{a.substance} <span className="font-normal text-muted-foreground">({SEV[a.severity]})</span></p>
               <p className="text-muted-foreground">{a.reaction}{a.notes ? ` · ${a.notes}` : ""}</p>
             </div>
             <div className="flex">
@@ -59,31 +75,37 @@ export default function Allergies() {
         ))}
       </ul>
 
-      <div className="space-y-3 rounded-lg border p-3">
+      <form
+        className="space-y-3 rounded-lg border p-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave();
+        }}
+      >
         <p className="font-semibold">{editId ? "แก้ไข" : "เพิ่มรายการ"}</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label>ประเภท</Label>
-            <select className={selectCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as AllergyType })}>
+            <Label htmlFor="allergy-type">ประเภท</Label>
+            <select id="allergy-type" className={selectCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as AllergyType })}>
               <option value="drug">ยา</option><option value="food">อาหาร</option><option value="other">อื่น ๆ</option>
             </select>
           </div>
           <div className="space-y-1">
-            <Label>ความรุนแรง</Label>
-            <select className={selectCls} value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as Severity })}>
+            <Label htmlFor="allergy-severity">ความรุนแรง</Label>
+            <select id="allergy-severity" className={selectCls} value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as Severity })}>
               <option value="mild">เล็กน้อย</option><option value="moderate">ปานกลาง</option><option value="severe">รุนแรง</option>
             </select>
           </div>
         </div>
-        <div className="space-y-1"><Label>แพ้อะไร</Label><Input value={form.substance} onChange={(e) => setForm({ ...form, substance: e.target.value })} /></div>
-        <div className="space-y-1"><Label>อาการ</Label><Input value={form.reaction} onChange={(e) => setForm({ ...form, reaction: e.target.value })} /></div>
-        <div className="space-y-1"><Label>หมายเหตุ</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+        <div className="space-y-1"><Label htmlFor="allergy-substance">แพ้อะไร</Label><Input id="allergy-substance" value={form.substance} onChange={(e) => setForm({ ...form, substance: e.target.value })} /></div>
+        <div className="space-y-1"><Label htmlFor="allergy-reaction">อาการ</Label><Input id="allergy-reaction" value={form.reaction} onChange={(e) => setForm({ ...form, reaction: e.target.value })} /></div>
+        <div className="space-y-1"><Label htmlFor="allergy-notes">หมายเหตุ</Label><Input id="allergy-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
         {msg && <p className="text-sm text-destructive">{msg}</p>}
         <div className="flex gap-2">
-          <Button onClick={onSave}>บันทึก</Button>
-          {editId && <Button variant="ghost" onClick={() => { setForm(EMPTY); setEditId(undefined); }}>ยกเลิก</Button>}
+          <Button type="submit">บันทึก</Button>
+          {editId && <Button type="button" variant="ghost" onClick={resetForm}>ยกเลิก</Button>}
         </div>
-      </div>
+      </form>
     </div>
   );
 }

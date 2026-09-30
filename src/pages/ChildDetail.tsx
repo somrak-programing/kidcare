@@ -33,7 +33,7 @@ export default function ChildDetail() {
 
       {(child.hospitals?.length ?? 0) > 0 && (
         <ul className="rounded-lg border p-3 text-sm">
-          {child.hospitals.map((h, i) => (
+          {child.hospitals?.map((h, i) => (
             <li key={i} className="flex justify-between"><span>{h.name}</span><span className="font-mono">HN {h.hn}</span></li>
           ))}
         </ul>
