@@ -40,7 +40,7 @@ families/{familyId}                name, ownerUid, memberUids: string[], created
                                    severity(mild|moderate|severe), notes?, notedAt?
     vaccineSeries/{id}             name, source(epi|custom), templateKey?, reason?,
                                    createdAt
-    vaccineDoses/{id}              familyId, childId, seriesId, vaccineName, doseNo,
+    vaccineDoses/{id}              familyId, childId, seriesId, vaccineName, vaccineCode?, doseNo,
                                    dueDate|null, given: boolean, givenDate|null, givenDateUnknown: boolean,
                                    brand?, lotNo?, amount?, site?, givenBy?, place?, notes?,
                                    source(manual|import), importConfidence?(high|medium|low)
@@ -49,7 +49,8 @@ families/{familyId}                name, ownerUid, memberUids: string[], created
 หลักการ:
 
 - ทุกเอกสารอยู่ใต้ `families/{familyId}` เพื่อรองรับการแชร์ครอบครัว ล็อกอินครั้งแรกระบบสร้าง family ให้อัตโนมัติ (ผู้ใช้เป็น owner และสมาชิกคนเดียว) แล้วเขียน `users/{uid}.familyId`
-- `vaccineDoses` เก็บ `familyId`/`childId`/`vaccineName` ซ้ำ (denormalize) เพื่อใช้ collectionGroup query ข้ามลูกทุกคนในหน้าแรก (`familyId == X`, `given == false`, orderBy `dueDate`) — ใช้ฟิลด์ `given` แยก เพราะเข็ม "ฉีดแล้ว ไม่ทราบวันที่" มี `givenDate` เป็น null
+- หน้าแรกดึงเข็มที่ยังไม่ฉีดด้วย query ต่อเด็กหนึ่งคน (`given == false`, เรียงวันที่ฝั่ง client) — มีลูก 2 คน จึงไม่ต้องใช้ collectionGroup query/composite index ใช้ฟิลด์ `given` แยก เพราะเข็ม "ฉีดแล้ว ไม่ทราบวันที่" มี `givenDate` เป็น null
+- `vaccineDoses` เก็บ `familyId`/`childId` ซ้ำเพื่อให้ rules ตรวจได้ และเก็บ `vaccineCode` (จาก EPI template) ไว้จับคู่ตอนนำเข้าจากสมุดชมพู
 - เฟส 2 จะเพิ่ม `illnesses`, `visits`, `medications`, `temperatureLogs` และเฟส 3 เพิ่ม `growth` ใต้ `children/{childId}` โดยไม่ต้องย้ายข้อมูลเดิม
 
 ## 4. ตรรกะวัคซีน
@@ -189,7 +190,6 @@ POST /extract-vaccines  ──────────────▶ ตรว�
 - `users/{uid}`: อ่านและเขียนได้เฉพาะเจ้าของ
 - `families/{fid}`: สร้างได้เมื่อ `request.auth.uid == ownerUid` และ `memberUids == [request.auth.uid]` ส่วนอ่าน/แก้ได้เมื่อ `request.auth.uid in resource.data.memberUids` (เฉพาะ owner ที่แก้ `memberUids` ได้)
 - subcollection ทั้งหมดใต้ `families/{fid}/**`: ต้องเป็นสมาชิก ตรวจด้วย `get(/databases/$(database)/documents/families/$(fid)).data.memberUids`
-- collectionGroup `match /{path=**}/vaccineDoses/{id}`: อ่านได้เมื่อ `resource.data.familyId` เป็นครอบครัวที่ผู้ใช้เป็นสมาชิก
 - เขียน `vaccineDoses`/`appointments` ต้องให้ `familyId` ตรงกับ `fid` ใน path
 
 Worker: API key อยู่ใน wrangler secret เท่านั้น, ทุก request ต้องมี Firebase ID token ที่ถูกต้องและ uid อยู่ใน `ALLOWED_UIDS`, CORS อนุญาตเฉพาะ `ALLOWED_ORIGIN`, ไม่ log รูปหรือผลลัพธ์
@@ -198,7 +198,7 @@ Worker: API key อยู่ใน wrangler secret เท่านั้น, ท
 
 ## 9. การจัดการ error
 
-- เขียนตอน offline: แสดงป้าย "รอซิงก์" จาก `hasPendingWrites` และไม่บล็อกผู้ใช้
+- เขียนตอน offline: ไม่ `await` การเขียน (Firestore จะ resolve เมื่อ server ตอบรับเท่านั้น) ให้ยิงแล้วไปต่อทันที, error แสดงเป็น alert และแสดงป้าย "ออฟไลน์ — รอซิงก์" ที่ header เมื่อ `navigator.onLine` เป็น false
 - permission-denied: แสดงข้อความแล้วพากลับหน้าแรก
 - ฟอร์มตรวจสอบด้วย zod (วันเกิดต้องไม่อยู่ในอนาคต, วันที่ฉีดต้องไม่ก่อนวันเกิด, `doseNo >= 1`)
 - ลบข้อมูล (การแพ้, series, นัด) ต้องยืนยันก่อน ลบ series จะลบ doses ของ series นั้นใน batch เดียวกัน
@@ -206,7 +206,7 @@ Worker: API key อยู่ใน wrangler secret เท่านั้น, ท
 ## 10. การทดสอบ
 
 - Vitest สำหรับ `src/domain/*` (รวม `matchImportedDoses`, การตรวจความสมเหตุสมผลของวันที่นำเข้า, การคำนวณขนาดรูปหลังย่อ): doseStatus (ทุกสถานะ + วันขอบ), สร้าง EPI จากวันเกิด (รวมวันสิ้นเดือน), สร้างชุดจาก template, shiftRemainingDoses, buildIcs (escape, VALARM, all-day), คำนวณอายุ (ปี/เดือน)
-- `@firebase/rules-unit-testing` + Firestore Emulator: สมาชิกอ่าน/เขียนได้, คนนอกทำไม่ได้, collectionGroup query ข้ามครอบครัวถูกปฏิเสธ, คนที่ไม่ใช่ owner แก้ `memberUids` ไม่ได้
+- `@firebase/rules-unit-testing` + Firestore Emulator: สมาชิกอ่าน/เขียนได้, คนนอกทำไม่ได้, คนที่ไม่ใช่ owner แก้ `memberUids` ไม่ได้
 - Worker: unit test การตรวจ token (token ปลอม/หมดอายุ/aud ผิด/uid ไม่อยู่ในรายชื่อ → 401/403), ขนาดและจำนวนรูปเกิน → 413, และการแปลงผลลัพธ์ Claude โดย mock SDK (ไม่เรียก API จริงใน test)
 - ทดสอบการอ่านจริงด้วยรูปสมุดชมพูของลูกทั้งสองคน 1 รอบ เทียบกับสมุดด้วยตา แล้วปรับ prompt ถ้าจำเป็น
 - ทดสอบด้วยมือบนมือถือ: ติดตั้ง PWA, บันทึกตอนโหมดเครื่องบินแล้วซิงก์, นำเข้า .ics บน iPhone และ Android
@@ -217,4 +217,4 @@ Worker: API key อยู่ใน wrangler secret เท่านั้น, ท
 
 Worker: `cd worker && npx wrangler deploy`
 
-ต้องมี composite index สำหรับ collectionGroup `vaccineDoses`: `familyId` + `given` + `dueDate`
+ไม่ต้องมี composite index ในเฟส 1
