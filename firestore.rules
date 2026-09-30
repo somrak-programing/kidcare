@@ -7,6 +7,19 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/families/$(fid)).data.memberUids;
     }
 
+    function verifiedEmail() {
+      return request.auth.token.email_verified == true ? request.auth.token.email.lower() : "";
+    }
+    function ownProfileOnly() {
+      return request.resource.data.get('memberProfiles', {})
+        .diff(resource.data.get('memberProfiles', {}))
+        .affectedKeys().hasOnly([request.auth.uid]);
+    }
+    function hasInviteFor(fid) {
+      let path = /databases/$(database)/documents/invites/$(verifiedEmail());
+      return verifiedEmail() != "" && exists(path) && get(path).data.familyId == fid;
+    }
+
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
@@ -17,12 +30,24 @@ service cloud.firestore {
         && request.resource.data.memberUids == [request.auth.uid];
       allow read: if signedIn() && request.auth.uid in resource.data.memberUids;
       allow update: if signedIn()
-        && request.auth.uid in resource.data.memberUids
         && request.resource.data.ownerUid == resource.data.ownerUid
-        && (request.resource.data.memberUids == resource.data.memberUids
-            || (request.auth.uid == resource.data.ownerUid
-                && request.resource.data.memberUids is list
-                && request.resource.data.ownerUid in request.resource.data.memberUids));
+        && (
+          // owner: anything, but must stay a member and memberUids stays a list
+          (request.auth.uid == resource.data.ownerUid
+            && request.resource.data.memberUids is list
+            && resource.data.ownerUid in request.resource.data.memberUids)
+          // other member: name + own profile only
+          || (request.auth.uid in resource.data.memberUids
+            && request.auth.uid != resource.data.ownerUid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'memberProfiles'])
+            && ownProfileOnly())
+          // invited user joining: add only self (+ own profile)
+          || (!(request.auth.uid in resource.data.memberUids)
+            && hasInviteFor(fid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'memberProfiles'])
+            && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+            && ownProfileOnly())
+        );
       allow delete: if false;
 
       match /appointments/{id} {
@@ -46,6 +71,16 @@ service cloud.firestore {
             && request.resource.data.childId == cid;
         }
       }
+    }
+
+    match /invites/{email} {
+      allow read: if signedIn() && (verifiedEmail() == email || resource.data.invitedBy == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.invitedBy == request.auth.uid
+        && request.resource.data.email == email
+        && get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.ownerUid == request.auth.uid;
+      allow delete: if signedIn() && (verifiedEmail() == email || resource.data.invitedBy == request.auth.uid);
+      allow update: if false;
     }
   }
 }

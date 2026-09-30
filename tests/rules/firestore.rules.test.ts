@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, test } from "vitest";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, writeBatch, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, writeBatch, deleteDoc, arrayUnion } from "firebase/firestore";
 
 let env: RulesTestEnvironment;
 const FID = "fam1";
@@ -155,5 +155,95 @@ describe("outsiders and cross-family access", () => {
   });
   test("carol cannot update fam1 family doc", async () => {
     await assertFails(updateDoc(doc(as("carol"), "families", FID), { name: "hacked" }));
+  });
+});
+
+const asUser = (uid: string, email: string, verified = true) =>
+  env.authenticatedContext(uid, { email, email_verified: verified }).firestore();
+
+describe("invites", () => {
+  test("owner creates invite for own family; non-owner member cannot", async () => {
+    await assertSucceeds(setDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "alice", email: "zoe@x.com" }));
+    await assertFails(setDoc(doc(asUser("bob", "bob@x.com"), "invites", "yan@x.com"), { familyId: FID, familyName: "F", invitedBy: "bob", email: "yan@x.com" }));
+  });
+  test("invite doc id must equal email field and invitedBy must be caller", async () => {
+    await assertFails(setDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "alice", email: "other@x.com" }));
+    await assertFails(setDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "bob", email: "zoe@x.com" }));
+  });
+  test("cannot overwrite an existing invite", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "invites", "zoe@x.com"), { familyId: "fam2", familyName: "C", invitedBy: "carol", email: "zoe@x.com" });
+    });
+    await assertFails(setDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "alice", email: "zoe@x.com" }));
+  });
+  test("invitee (verified) and inviter can read; others and unverified cannot", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "alice", email: "zoe@x.com" });
+    });
+    await assertSucceeds(getDoc(doc(asUser("zoe", "Zoe@X.com"), "invites", "zoe@x.com")));
+    await assertSucceeds(getDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com")));
+    await assertFails(getDoc(doc(asUser("zoe", "zoe@x.com", false), "invites", "zoe@x.com")));
+    await assertFails(getDoc(doc(asUser("mallory", "m@x.com"), "invites", "zoe@x.com")));
+    // reading a non-existent own invite is allowed (returns not found)
+    await assertSucceeds(getDoc(doc(asUser("yan", "yan@x.com"), "invites", "yan@x.com")));
+  });
+  test("inviter lists own invites", async () => {
+    await assertSucceeds(getDocs(query(collection(asUser("alice", "alice@x.com"), "invites"), where("invitedBy", "==", "alice"))));
+  });
+  test("invitee or inviter can delete; others cannot", async () => {
+    const seed = async () => env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "invites", "zoe@x.com"), { familyId: FID, familyName: "F", invitedBy: "alice", email: "zoe@x.com" });
+    });
+    await seed();
+    await assertFails(deleteDoc(doc(asUser("mallory", "m@x.com"), "invites", "zoe@x.com")));
+    await assertSucceeds(deleteDoc(doc(asUser("zoe", "zoe@x.com"), "invites", "zoe@x.com")));
+    await seed();
+    await assertSucceeds(deleteDoc(doc(asUser("alice", "alice@x.com"), "invites", "zoe@x.com")));
+  });
+});
+
+describe("joining a family by invite", () => {
+  const invite = async (email = "zoe@x.com", familyId = FID) => env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "invites", email), { familyId, familyName: "F", invitedBy: "alice", email });
+  });
+  const join = (db: ReturnType<typeof asUser>, uid: string) =>
+    updateDoc(doc(db, "families", FID), { memberUids: arrayUnion(uid), [`memberProfiles.${uid}`]: { name: "Zoe", email: "zoe@x.com" } });
+
+  test("invited user adds only themselves", async () => {
+    await invite();
+    await assertSucceeds(join(asUser("zoe", "zoe@x.com"), "zoe"));
+    await assertSucceeds(getDoc(doc(asUser("zoe", "zoe@x.com"), "families", FID, "children", "c1")));
+  });
+  test("without invite, or unverified email, or invite for another family → denied", async () => {
+    await assertFails(join(asUser("zoe", "zoe@x.com"), "zoe"));
+    await invite("zoe@x.com", "fam2");
+    await assertFails(join(asUser("zoe", "zoe@x.com"), "zoe"));
+    await invite();
+    await assertFails(join(asUser("zoe", "zoe@x.com", false), "zoe"));
+  });
+  test("invitee cannot add someone else, change name/owner, or touch other profiles", async () => {
+    await invite();
+    const db = asUser("zoe", "zoe@x.com");
+    await assertFails(updateDoc(doc(db, "families", FID), { memberUids: arrayUnion("mallory") }));
+    await assertFails(updateDoc(doc(db, "families", FID), { memberUids: arrayUnion("zoe"), name: "hacked" }));
+    await assertFails(updateDoc(doc(db, "families", FID), { memberUids: arrayUnion("zoe"), "memberProfiles.bob": { name: "x", email: "x" } }));
+    await assertFails(updateDoc(doc(db, "families", FID), { memberUids: ["alice", "zoe"] }));
+  });
+  test("invitee can read nothing in the family before joining", async () => {
+    await invite();
+    await assertFails(getDoc(doc(asUser("zoe", "zoe@x.com"), "families", FID)));
+  });
+});
+
+describe("members and profiles", () => {
+  test("non-owner member may edit name and own profile only", async () => {
+    const db = asUser("bob", "bob@x.com");
+    await assertSucceeds(updateDoc(doc(db, "families", FID), { "memberProfiles.bob": { name: "Bob", email: "bob@x.com" } }));
+    await assertFails(updateDoc(doc(db, "families", FID), { "memberProfiles.alice": { name: "x", email: "x" } }));
+  });
+  test("owner removes a member; removed member loses access; owner cannot remove self", async () => {
+    await assertSucceeds(updateDoc(doc(asUser("alice", "alice@x.com"), "families", FID), { memberUids: ["alice"] }));
+    await assertFails(getDoc(doc(asUser("bob", "bob@x.com"), "families", FID, "children", "c1")));
+    await assertFails(updateDoc(doc(asUser("alice", "alice@x.com"), "families", FID), { memberUids: [] }));
   });
 });
