@@ -16,7 +16,10 @@ const ROW_H = 40;
 const TOP = 4;
 const BOTTOM = 26;
 const GROUP_GAP = 0.75;
-const MIN_TICK_SPACING = 30;
+const MIN_TICK_SPACING = 40;
+const HIT_R = 14;
+const HIT_MIN_R = 8;
+const HIT_CLOSE = 28;
 const GIVEN = "#0ca30c";
 const OVERDUE = "#d03b3b";
 const UPCOMING = "#6b7280";
@@ -25,9 +28,20 @@ const RING = "hsl(var(--card))";
 
 type Point = AgeTimelineData["points"][number];
 
+type SegmenterCtor = new (
+  locale: string,
+  opts: { granularity: "grapheme" },
+) => { segment: (s: string) => Iterable<{ segment: string }> };
+
 const shortName = (n: string) => {
-  const chars = Array.from(n);
-  return chars.length > 7 ? `${chars.slice(0, 7).join("")}…` : n;
+  let parts: string[];
+  try {
+    const Seg = (Intl as unknown as { Segmenter?: SegmenterCtor }).Segmenter;
+    parts = Seg ? Array.from(new Seg("th", { granularity: "grapheme" }).segment(n), (g) => g.segment) : Array.from(n);
+  } catch {
+    parts = Array.from(n);
+  }
+  return parts.length > 7 ? `${parts.slice(0, 7).join("")}…` : n;
 };
 
 /** Group same-row points whose ages are within GROUP_GAP months of the group's first point. */
@@ -68,19 +82,35 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
   const ticks = Array.from({ length: Math.floor(maxAge / tickStep) + 1 }, (_, i) => i * tickStep);
   const groupsByRow = rows.map((r) => groupPoints(r.data.points));
   const groupX = (g: Point[]) => g.reduce((s, p) => s + x(p.ageMonths), 0) / g.length;
+  /** Hit radius per group; shrink neighbours whose centers are closer than HIT_CLOSE so targets don't overlap. */
+  const hitRadii = (groups: Point[][]) => {
+    const radii = groups.map(() => HIT_R);
+    for (let k = 0; k + 1 < groups.length; k++) {
+      const d = groupX(groups[k + 1]) - groupX(groups[k]);
+      if (d < HIT_CLOSE) {
+        const r = Math.max(HIT_MIN_R, d / 2);
+        radii[k] = Math.min(radii[k], r);
+        radii[k + 1] = Math.min(radii[k + 1], r);
+      }
+    }
+    return radii;
+  };
+  const radiiByRow = groupsByRow.map(hitRadii);
   const doseText = (p: Point) => `${p.label} · ${formatThaiDate(p.date)} · ${STATUS_TEXT[p.status]}`;
   const chartLabel = `ไทม์ไลน์วัคซีนของลูก ${rows.length} คน`;
 
-  let tip: { style: CSSProperties; lines: string[] } | null = null;
+  let tip: { style: CSSProperties; lines: string[]; below: boolean } | null = null;
   if (active) {
     const ri = rows.findIndex((r) => r.id === active.rowId);
     const g = ri >= 0 ? groupsByRow[ri].find((q) => q[0].doseId === active.key) : undefined;
     if (g) {
       const xPct = (groupX(g) / W) * 100;
-      const style: CSSProperties = { top: `calc(${(rowY(ri) / H) * 100}% - 16px)` };
+      const below = ri === 0;
+      const rowPct = (rowY(ri) / H) * 100;
+      const style: CSSProperties = { top: below ? `calc(${rowPct}% + 16px)` : `calc(${rowPct}% - 16px)` };
       if (xPct < 50) style.left = `${xPct}%`;
       else style.right = `${100 - xPct}%`;
-      tip = { style, lines: g.map(doseText) };
+      tip = { style, lines: g.map(doseText), below };
     }
   }
 
@@ -108,7 +138,7 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
       <div ref={ref} className="relative mt-2">
         {tip && (
           <div
-            className="pointer-events-none absolute z-10 max-w-[70%] -translate-y-full rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md"
+            className={`pointer-events-none absolute z-10 max-w-[70%] ${tip.below ? "" : "-translate-y-full"} rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md`}
             style={tip.style}
           >
             {tip.lines.map((l, i) => (
@@ -147,10 +177,9 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
                   strokeWidth={2}
                 />
                 {groupsByRow[i].map((g) => {
-                  const select = () => setActive({ rowId: r.id, key: g[0].doseId });
                   const n = g.length;
                   return (
-                    <g key={g[0].doseId}>
+                    <g key={`m-${g[0].doseId}`}>
                       {g.map((p, j) => {
                         const cx = x(p.ageMonths);
                         const my = cy + (n > 1 ? -4 + (8 * j) / (n - 1) : 0);
@@ -173,22 +202,29 @@ export function AgeTimeline({ rows }: { rows: Row[] }) {
                           </g>
                         );
                       })}
-                      <circle
-                        cx={groupX(g)}
-                        cy={cy}
-                        r={14}
-                        fill="transparent"
-                        tabIndex={0}
-                        className="outline-none focus-visible:stroke-foreground"
-                        strokeWidth={1.5}
-                        aria-label={`${r.name}: ${g.map((p) => `${p.label} ${formatThaiDate(p.date)} ${STATUS_TEXT[p.status]}`).join(", ")}`}
-                        onMouseEnter={select}
-                        onMouseLeave={clear}
-                        onPointerDown={select}
-                        onFocus={select}
-                        onBlur={clear}
-                      />
                     </g>
+                  );
+                })}
+                {groupsByRow[i].map((g, gi) => {
+                  const select = () => setActive({ rowId: r.id, key: g[0].doseId });
+                  return (
+                    <circle
+                      key={`h-${g[0].doseId}`}
+                      cx={groupX(g)}
+                      cy={cy}
+                      r={radiiByRow[i][gi]}
+                      fill="transparent"
+                      tabIndex={0}
+                      role="img"
+                      className="outline-none focus-visible:stroke-foreground"
+                      strokeWidth={1.5}
+                      aria-label={`${r.name}: ${g.map((p) => `${p.label} ${formatThaiDate(p.date)} ${STATUS_TEXT[p.status]}`).join(", ")}`}
+                      onMouseEnter={select}
+                      onMouseLeave={clear}
+                      onPointerDown={select}
+                      onFocus={select}
+                      onBlur={clear}
+                    />
                   );
                 })}
               </g>

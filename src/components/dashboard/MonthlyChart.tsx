@@ -56,8 +56,19 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
   const activeBucket = active !== null ? buckets[active] : null;
   const tipStyle: CSSProperties = { top: `${(MT / H) * 100}%` };
   if (active !== null) {
-    if (active < 6) tipStyle.left = `${((ML + (active + 1) * band) / W) * 100 + 1}%`;
-    else tipStyle.right = `${100 - ((ML + active * band) / W) * 100 + 1}%`;
+    const plotEndPct = ((W - MR) / W) * 100;
+    const plotStartPct = (ML / W) * 100;
+    let remaining: number;
+    if (active < 6) {
+      const left = ((ML + (active + 1) * band) / W) * 100 + 1;
+      tipStyle.left = `${left}%`;
+      remaining = plotEndPct - left;
+    } else {
+      const right = 100 - ((ML + active * band) / W) * 100 + 1;
+      tipStyle.right = `${right}%`;
+      remaining = 100 - right - plotStartPct;
+    }
+    tipStyle.maxWidth = `min(60%, ${Math.max(remaining, 0)}%)`;
   }
   const chartLabel = `จำนวนนัดใน 12 เดือนข้างหน้า รวม ${grand} นัด`;
 
@@ -77,7 +88,7 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
       <div ref={ref} className="relative mt-2">
         {activeBucket && (
           <div
-            className="pointer-events-none absolute z-10 max-w-[60%] rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md"
+            className="pointer-events-none absolute z-10 rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md"
             style={tipStyle}
           >
             <div className="truncate font-medium">
@@ -162,6 +173,7 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
                   height={H}
                   fill="transparent"
                   tabIndex={0}
+                  role="img"
                   className="outline-none"
                   aria-label={`${b.label} ${b.yearBE}: ${describe(b)}`}
                   onMouseEnter={() => setActive(i)}
