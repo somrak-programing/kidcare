@@ -38,6 +38,12 @@ describe("generateCustomDoses", () => {
     expect(d[1].given).toBeFalsy();
     expect(d[4].dueDate).toBe("2026-10-27");
   });
+
+  test("rejects an anchor outside the template", () => {
+    for (const doseNo of [0, 6, -1, 1.5]) {
+      expect(() => generateCustomDoses(rabiesIM, { doseNo, date: "2026-10-02" })).toThrow(RangeError);
+    }
+  });
 });
 
 describe("shiftRemainingDoses", () => {
@@ -48,6 +54,20 @@ describe("shiftRemainingDoses", () => {
       { id: "c", doseNo: 3, given: false, dueDate: "2026-10-06" },
       { id: "d", doseNo: 4, given: false, dueDate: null },
       { id: "e", doseNo: 5, given: false, dueDate: "2026-10-27" },
+    ];
+    expect(shiftRemainingDoses(doses, 2, 2)).toEqual([
+      { id: "c", dueDate: "2026-10-08" },
+      { id: "e", dueDate: "2026-10-29" },
+    ]);
+  });
+
+  test("handles doses in shuffled order and still produces sorted output", () => {
+    const doses = [
+      { id: "e", doseNo: 5, given: false, dueDate: "2026-10-27" },
+      { id: "c", doseNo: 3, given: false, dueDate: "2026-10-06" },
+      { id: "a", doseNo: 1, given: true, dueDate: "2026-09-29" },
+      { id: "d", doseNo: 4, given: false, dueDate: null },
+      { id: "b", doseNo: 2, given: true, dueDate: "2026-10-02" },
     ];
     expect(shiftRemainingDoses(doses, 2, 2)).toEqual([
       { id: "c", dueDate: "2026-10-08" },

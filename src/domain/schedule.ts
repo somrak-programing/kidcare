@@ -56,7 +56,10 @@ export function generateCustomDoses(
   tpl: Pick<CustomTemplate, "name" | "vaccineCode" | "dayOffsets">,
   anchor: { doseNo: number; date: ISODate },
 ): DoseDraft[] {
-  const base = tpl.dayOffsets[anchor.doseNo - 1] ?? 0;
+  if (!Number.isInteger(anchor.doseNo) || anchor.doseNo < 1 || anchor.doseNo > tpl.dayOffsets.length) {
+    throw new RangeError("anchor.doseNo out of range");
+  }
+  const base = tpl.dayOffsets[anchor.doseNo - 1];
   return tpl.dayOffsets.map((offset, i) => {
     const doseNo = i + 1;
     const date = addDaysISO(anchor.date, offset - base);
