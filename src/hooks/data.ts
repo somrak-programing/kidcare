@@ -30,8 +30,8 @@ export function useOpenAppointments(fid: string) {
   return useCollection<Appointment>(query(appointmentsCol(fid), where("done", "==", false)), `appts/${fid}`);
 }
 
-/** เข็มที่ยังไม่ฉีดของลูกทุกคน (query ต่อเด็ก 1 คน) */
-export function usePendingDoses(fid: string, childIds: string[]) {
+/** เข็มวัคซีนทั้งหมดของลูกทุกคน (query ต่อเด็ก 1 คน) */
+export function useFamilyDoses(fid: string, childIds: string[]) {
   const key = childIds.join(",");
   const [byChild, setByChild] = useState<Record<string, VaccineDose[]>>({});
   const [error, setError] = useState<FirestoreError | null>(null);
@@ -44,7 +44,7 @@ export function usePendingDoses(fid: string, childIds: string[]) {
       setSettled((s) => (s.key !== key || s.ids.has(cid) ? s : { key, ids: new Set(s.ids).add(cid) }));
     const unsubs = childIds.map((cid) =>
       onSnapshot(
-        query(childSub(fid, cid, "vaccineDoses"), where("given", "==", false)),
+        childSub(fid, cid, "vaccineDoses"),
         (snap) => {
           setError(null);
           setByChild((m) => ({ ...m, [cid]: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VaccineDose) }));

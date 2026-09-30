@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import ChildCard from "@/components/ChildCard";
 import ErrorState from "@/components/ErrorState";
 import UpcomingList from "@/components/UpcomingList";
-import { useChildren, useOpenAppointments, usePendingDoses } from "@/hooks/data";
+import { useChildren, useOpenAppointments, useFamilyDoses } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { todayISO } from "@/domain/dates";
 import type { UpcomingItem } from "@/domain/upcoming";
@@ -14,7 +14,8 @@ export default function Home() {
   const fid = useFamilyId();
   const { data: children, loading: childrenLoading, error } = useChildren(fid);
   const childIds = useMemo(() => children.map((c) => c.id), [children]);
-  const { data: pending, error: e2, loading: pendingLoading } = usePendingDoses(fid, childIds);
+  const { data: allDoses, error: e2, loading: pendingLoading } = useFamilyDoses(fid, childIds);
+  const pending = useMemo(() => allDoses.filter((d) => !d.given), [allDoses]);
   const { data: appts, error: e3, loading: apptsLoading } = useOpenAppointments(fid);
   const today = todayISO();
 

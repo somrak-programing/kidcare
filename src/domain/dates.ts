@@ -29,6 +29,10 @@ export function todayISO(now: Date = new Date()): ISODate {
 
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
+export function thaiMonthShort(monthIndex0: number): string {
+  return TH_MONTHS[monthIndex0];
+}
+
 export function formatThaiDate(iso: ISODate): string {
   const d = parseISO(iso);
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
