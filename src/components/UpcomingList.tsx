@@ -8,7 +8,7 @@ import { groupUpcoming, type UpcomingItem } from "@/domain/upcoming";
 import { setAppointmentDone } from "@/lib/repo/appointments";
 import type { Child } from "@/types";
 
-export default function UpcomingList({ fid, items, kids }: { fid: string; items: UpcomingItem[]; kids: Child[] }) {
+export default function UpcomingList({ fid, items, kids, showAll = false }: { fid: string; items: UpcomingItem[]; kids: Child[]; showAll?: boolean }) {
   const g = groupUpcoming(items, todayISO());
   const who = (cid: string) => {
     const c = kids.find((x) => x.id === cid);
@@ -21,7 +21,7 @@ export default function UpcomingList({ fid, items, kids }: { fid: string; items:
   const sections: [string, UpcomingItem[], string][] = [
     ["เลยกำหนด", g.overdue, "border-red-500/60"],
     ["7 วันข้างหน้า", g.soon, "border-amber-500/60"],
-    ["ถัดไป", g.later.slice(0, 5), "border-border"],
+    ["ถัดไป", showAll ? g.later : g.later.slice(0, 5), "border-border"],
   ];
   if (!items.length) return <p className="text-sm text-muted-foreground">ไม่มีนัดที่รออยู่</p>;
   return (

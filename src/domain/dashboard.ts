@@ -1,7 +1,6 @@
-import { parseISO } from "date-fns";
 import type { Appointment, ISODate, VaccineDose } from "@/types";
 import { diffDays, thaiMonthShort } from "./dates";
-import type { UpcomingItem } from "./upcoming";
+import { byDateTime, type UpcomingItem } from "./upcoming";
 
 export const CHILD_COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500"] as const;
 export const childColor = (index: number): string => CHILD_COLORS[index % CHILD_COLORS.length];
@@ -16,8 +15,6 @@ export function toUpcomingItems(doses: VaccineDose[], appts: Appointment[]): Upc
       .map((a) => ({ kind: "appointment" as const, id: a.id, childId: a.childId, date: a.date, time: a.time, title: a.purpose, place: a.place })),
   ];
 }
-
-const byDateTime = (a: UpcomingItem, b: UpcomingItem) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "");
 
 export interface DashboardSummary {
   overdueCount: number;
@@ -124,6 +121,3 @@ export function ageTimeline(birthDate: ISODate, doses: VaccineDose[], today: ISO
   const furthest = Math.max(60, todayAgeMonths, ...points.map((p) => p.ageMonths));
   return { points, todayAgeMonths, maxAgeMonths: Math.ceil(furthest / 12) * 12 };
 }
-
-// re-exported for components that format bucket years
-export const isoYear = (iso: ISODate) => parseISO(iso).getFullYear();

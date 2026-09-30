@@ -9,6 +9,7 @@ import Allergies from "@/pages/Allergies";
 import NewSeries from "@/pages/NewSeries";
 import Home from "@/pages/Home";
 import AppointmentForm from "@/pages/AppointmentForm";
+import Appointments from "@/pages/Appointments";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<Home />} />
+        <Route path="/appointments" element={<Appointments />} />
         <Route path="/appointments/new" element={<AppointmentForm />} />
         <Route path="/appointments/:apptId/edit" element={<AppointmentForm />} />
         <Route path="/children/new" element={<ChildForm />} />

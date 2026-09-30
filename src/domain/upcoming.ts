@@ -12,7 +12,7 @@ export interface UpcomingItem {
   place?: string;
 }
 
-const byDateTime = (a: UpcomingItem, b: UpcomingItem) =>
+export const byDateTime = (a: UpcomingItem, b: UpcomingItem) =>
   a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "");
 
 export function groupUpcoming(items: UpcomingItem[], today: ISODate) {
