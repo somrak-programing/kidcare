@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type CSSProperties } from "react";
 import type { MonthBucket } from "@/domain/dashboard";
 import { useDismissOnOutside } from "./useDismiss";
 
@@ -9,11 +9,11 @@ interface Kid {
 }
 
 const W = 360;
-const H = 180;
+const H = 182;
 const ML = 24;
 const MR = 8;
 const MT = 8;
-const MB = 28;
+const MB = 30;
 const PLOT_W = W - ML - MR;
 const PLOT_H = H - MT - MB;
 const BASE_Y = MT + PLOT_H;
@@ -22,8 +22,12 @@ const GAP = 2;
 
 export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: Kid[] }) {
   const [active, setActive] = useState<number | null>(null);
+  const [kbd, setKbd] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const clear = useCallback(() => setActive(null), []);
+  const clear = useCallback(() => {
+    setActive(null);
+    setKbd(false);
+  }, []);
   useDismissOnOutside(ref, clear, active !== null);
 
   const grand = buckets.reduce((s, b) => s + b.total, 0);
@@ -50,7 +54,12 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
   };
 
   const activeBucket = active !== null ? buckets[active] : null;
-  const tipLeft = active !== null ? Math.min(82, Math.max(18, ((ML + (active + 0.5) * band) / W) * 100)) : 0;
+  const tipStyle: CSSProperties = { top: `${(MT / H) * 100}%` };
+  if (active !== null) {
+    if (active < 6) tipStyle.left = `${((ML + (active + 1) * band) / W) * 100 + 1}%`;
+    else tipStyle.right = `${100 - ((ML + active * band) / W) * 100 + 1}%`;
+  }
+  const chartLabel = `จำนวนนัดใน 12 เดือนข้างหน้า รวม ${grand} นัด`;
 
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -68,19 +77,19 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
       <div ref={ref} className="relative mt-2">
         {activeBucket && (
           <div
-            className="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md"
-            style={{ left: `${tipLeft}%` }}
+            className="pointer-events-none absolute z-10 max-w-[60%] rounded-md border bg-card px-2 py-1 text-xs text-foreground shadow-md"
+            style={tipStyle}
           >
-            <div className="font-medium">
+            <div className="truncate font-medium">
               {activeBucket.label} {activeBucket.yearBE}
             </div>
             {activeBucket.total === 0 ? (
-              <div className="text-muted-foreground">ไม่มีนัด</div>
+              <div className="truncate text-muted-foreground">ไม่มีนัด</div>
             ) : (
               kids
                 .filter((k) => (activeBucket.counts[k.id] ?? 0) > 0)
                 .map((k) => (
-                  <div key={k.id}>
+                  <div key={k.id} className="truncate">
                     • {k.name} {activeBucket.counts[k.id]}
                   </div>
                 ))
@@ -91,14 +100,14 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           className="block"
-          role="img"
-          aria-label={`จำนวนนัดใน 12 เดือนข้างหน้า รวม ${grand} นัด`}
+          role="group"
+          aria-label={chartLabel}
         >
           <g className="text-muted-foreground">
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={ML} x2={W - MR} y1={y(t)} y2={y(t)} stroke="currentColor" opacity={t === 0 ? 0.4 : 0.15} />
-                <text x={ML - 4} y={y(t) + 3} textAnchor="end" fontSize={10} fill="currentColor">
+                <text x={ML - 4} y={y(t) + 3} textAnchor="end" fontSize={11} fill="currentColor">
                   {t}
                 </text>
               </g>
@@ -122,14 +131,26 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
             const showYear = i === 0 || buckets[i - 1].yearBE !== b.yearBE;
             return (
               <g key={b.key}>
-                {active === i && <rect x={ML + i * band} y={MT} width={band} height={PLOT_H} fill="currentColor" opacity={0.08} />}
+                {active === i && (
+                  <rect
+                    x={ML + i * band}
+                    y={MT}
+                    width={band}
+                    height={PLOT_H}
+                    fill="currentColor"
+                    fillOpacity={0.08}
+                    stroke={kbd ? "currentColor" : "none"}
+                    strokeWidth={1.5}
+                    strokeOpacity={0.6}
+                  />
+                )}
                 {segs}
                 <g className="text-muted-foreground">
-                  <text x={cx} y={BASE_Y + 12} textAnchor="middle" fontSize={10} fill="currentColor">
+                  <text x={cx} y={BASE_Y + 13} textAnchor="middle" fontSize={11} fill="currentColor">
                     {b.label}
                   </text>
                   {showYear && (
-                    <text x={cx} y={BASE_Y + 23} textAnchor="middle" fontSize={9} fill="currentColor">
+                    <text x={cx} y={BASE_Y + 25} textAnchor="middle" fontSize={10} fill="currentColor">
                       {b.yearBE}
                     </text>
                   )}
@@ -145,8 +166,20 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
                   aria-label={`${b.label} ${b.yearBE}: ${describe(b)}`}
                   onMouseEnter={() => setActive(i)}
                   onMouseLeave={clear}
-                  onPointerDown={() => setActive(i)}
-                  onFocus={() => setActive(i)}
+                  onPointerDown={() => {
+                    setKbd(false);
+                    setActive(i);
+                  }}
+                  onFocus={(e) => {
+                    let visible = false;
+                    try {
+                      visible = e.currentTarget.matches(":focus-visible");
+                    } catch {
+                      visible = false;
+                    }
+                    setKbd(visible);
+                    setActive(i);
+                  }}
                   onBlur={clear}
                 />
               </g>
@@ -155,13 +188,16 @@ export function MonthlyChart({ buckets, kids }: { buckets: MonthBucket[]; kids: 
         </svg>
       </div>
       <table className="sr-only">
+        <caption>{chartLabel}</caption>
         <thead>
           <tr>
-            <th>เดือน</th>
+            <th scope="col">เดือน</th>
             {kids.map((k) => (
-              <th key={k.id}>{k.name}</th>
+              <th key={k.id} scope="col">
+                {k.name}
+              </th>
             ))}
-            <th>รวม</th>
+            <th scope="col">รวม</th>
           </tr>
         </thead>
         <tbody>
