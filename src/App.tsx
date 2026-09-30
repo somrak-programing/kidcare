@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "@/components/Layout";
 import RequireFamily from "@/components/RequireFamily";
 import Login from "@/pages/Login";
@@ -7,10 +7,8 @@ import ChildForm from "@/pages/ChildForm";
 import ChildDetail from "@/pages/ChildDetail";
 import Allergies from "@/pages/Allergies";
 import NewSeries from "@/pages/NewSeries";
-
-function HomePlaceholder() {
-  return <Link to="/children/new">เพิ่มลูก</Link>;
-}
+import Home from "@/pages/Home";
+import AppointmentForm from "@/pages/AppointmentForm";
 
 export default function App() {
   return (
@@ -23,7 +21,9 @@ export default function App() {
           </RequireFamily>
         }
       >
-        <Route path="/" element={<HomePlaceholder />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/appointments/new" element={<AppointmentForm />} />
+        <Route path="/appointments/:apptId/edit" element={<AppointmentForm />} />
         <Route path="/children/new" element={<ChildForm />} />
         <Route path="/children/:id" element={<ChildDetail />} />
         <Route path="/children/:id/edit" element={<ChildForm />} />
