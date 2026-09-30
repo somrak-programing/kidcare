@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMember(fid) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/families/$(fid)).data.memberUids;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /families/{fid} {
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.memberUids == [request.auth.uid];
+      allow read: if signedIn() && request.auth.uid in resource.data.memberUids;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.memberUids
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (request.resource.data.memberUids == resource.data.memberUids
+            || request.auth.uid == resource.data.ownerUid);
+      allow delete: if false;
+
+      match /appointments/{id} {
+        allow read, delete: if isMember(fid);
+        allow create, update: if isMember(fid) && request.resource.data.familyId == fid;
+      }
+
+      match /children/{cid} {
+        allow read, write: if isMember(fid);
+
+        match /allergies/{id} {
+          allow read, write: if isMember(fid);
+        }
+        match /vaccineSeries/{id} {
+          allow read, write: if isMember(fid);
+        }
+        match /vaccineDoses/{id} {
+          allow read, delete: if isMember(fid);
+          allow create, update: if isMember(fid)
+            && request.resource.data.familyId == fid
+            && request.resource.data.childId == cid;
+        }
+      }
+    }
+  }
+}
