@@ -1069,7 +1069,7 @@ git commit -m "feat(import): vaccine codes, image sizing and dose matching logic
 
 **Files:**
 - Create: `src/lib/resizeImage.ts`, `src/lib/extractClient.ts`, `src/pages/ImportPinkBook.tsx`
-- Modify: `src/lib/repo/vaccines.ts` (add `saveImport`), `src/components/VaccineTimeline.tsx` (button), `src/App.tsx` (route), `.env.example` (+ `VITE_EXTRACT_URL=`), `.env.local` (real URL)
+- Modify: `src/lib/repo/vaccines.ts` (add `saveImport`), `src/components/VaccineTimeline.tsx` (button), `src/App.tsx` (route), `.env.example` (+ `VITE_WORKER_URL=`), `.env.local` (real URL)
 
 **Interfaces:**
 - Consumes: `fitWithin`, `matchImportedDoses`, `rowWarnings`, `findDuplicateTargets`, `ImportedRecord`, `ImportRow`; `auth` (Plan 1); `useChild`, `useDoses`; `fire`, `childSub`, `db`.
@@ -1124,8 +1124,8 @@ const MESSAGES: Record<string, string> = {
 
 export async function callExtract(images: { mediaType: string; data: string }[], birthDate: string): Promise<ImportedRecord[]> {
   if (!navigator.onLine) throw new ExtractClientError("ต้องต่ออินเทอร์เน็ตเพื่ออ่านรูป");
-  const base = import.meta.env.VITE_EXTRACT_URL as string | undefined;
-  if (!base) throw new ExtractClientError("ยังไม่ได้ตั้งค่า VITE_EXTRACT_URL");
+  const base = import.meta.env.VITE_WORKER_URL as string | undefined;
+  if (!base) throw new ExtractClientError("ยังไม่ได้ตั้งค่า VITE_WORKER_URL");
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new ExtractClientError(MESSAGES.unauthorized);
   let res: Response;
@@ -1385,7 +1385,7 @@ export default function ImportPinkBook() {
 ```
 and add `Camera` to the `lucide-react` import.
 
-`.env.example`: add `VITE_EXTRACT_URL=`. `.env.local`: `VITE_EXTRACT_URL=https://kidcare-extract.<subdomain>.workers.dev`.
+`.env.example`: add `VITE_WORKER_URL=`. `.env.local`: `VITE_WORKER_URL=https://kidcare-extract.<subdomain>.workers.dev`.
 
 - [ ] **Step 6: Typecheck, tests, browser check**
 
