@@ -232,3 +232,17 @@ Keep the `appointments` and `children` sub-matches inside `families/{fid}` exact
 - [ ] **Step 2:** `npx tsc -b && npm test && npm run build` clean.
 - [ ] **Step 3: Commit** `feat(ui): invite members by email, invitation banner`.
 - [ ] **Step 4 (controller):** deploy rules to `kidcare-2w` **before** shipping the UI (ask user), browser-check Settings as owner; the real partner test is done by the user.
+
+---
+
+## Addendum (security review, 2026-09-30) — supersedes conflicting text above
+
+Findings: (1) any user could own a throwaway family and plant `invites/{victimEmail}`; with auto-join the victim's data would land in the attacker's family; one-slot-per-email also let attackers block real invites. (2) a removed member could rejoin with an undeleted invite. (3) profile contents/invite fields unvalidated.
+
+Changes:
+- **No auto-join.** A user without a family who has pending invites sees a choice screen (each invite shows the inviter's verified email + family name → "เข้าร่วม", plus "สร้างครอบครัวของฉันเอง"). Users with a family see the banner; joining always asks for confirmation.
+- **Invite id = `${familyId}_${emailLower}`**, fields exactly `{ familyId, familyName, invitedBy, inviterEmail, email, createdAt }`; create requires: caller owns the family, `inviterEmail == caller's verified email`, `familyName == family.name`, email lowercase + basic format + ≤254 chars, `createdAt == request.time`, keys hasOnly those six.
+- Invitee finds invites with `where("email","==", myVerifiedEmailLower)`; read rule `resource.data.email == verifiedEmail() || resource.data.invitedBy == uid`.
+- **Join rule** requires the invite `${fid}_${verifiedEmail}` to exist, be < 14 days old (`createdAt > request.time - duration.value(14,'d')`) and be **deleted in the same batch** (`!existsAfter(...)`).
+- **Profile validation** for non-owner/joiner writes: `memberProfiles[uid]` keys hasOnly name/email, `email == verifiedEmail()`, `name is string && size <= 100`. Non-owner `name` change: string ≤ 60.
+- Client: `ensureFamily` split into `resolveFamily(user): Promise<string|null>` (membership check + stale clear) and `createFamily(user)`; `RequireFamily` orchestrates resolve → invites choice → create.
