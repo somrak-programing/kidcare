@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import ErrorState from "@/components/ErrorState";
 import { useAuth } from "@/hooks/useAuth";
 import { useDocument } from "@/hooks/useCollection";
-import { familyCacheKey, useFamilyId, useFamilyStore } from "@/hooks/useFamilyId";
+import { familyCacheKey, useFamilyId } from "@/hooks/useFamilyId";
 import { logout } from "@/lib/auth";
 import { familyDoc } from "@/lib/paths";
 import { renameFamily } from "@/lib/repo/family";
@@ -14,7 +14,6 @@ import type { Family } from "@/types";
 export default function Settings() {
   const fid = useFamilyId();
   const { user } = useAuth();
-  const setFamilyId = useFamilyStore((s) => s.setFamilyId);
   const { data: family, error } = useDocument<Family>(familyDoc(fid), `family/${fid}`);
   const [name, setName] = useState("");
   useEffect(() => setName(family?.name ?? ""), [family?.name]);
@@ -23,12 +22,16 @@ export default function Settings() {
 
   async function onLogout() {
     try {
+      await logout();
+    } catch {
+      alert("ออกจากระบบไม่สำเร็จ กรุณาลองอีกครั้ง");
+      return;
+    }
+    try {
       if (user) localStorage.removeItem(familyCacheKey(user.uid));
     } catch {
       /* ignore */
     }
-    setFamilyId(null);
-    await logout();
   }
 
   return (

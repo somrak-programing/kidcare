@@ -12,7 +12,7 @@ export function useCollection<T>(q: Query | null, key: string) {
       setState({ data: [], loading: false, error: null });
       return;
     }
-    setState((s) => ({ ...s, loading: true }));
+    setState({ data: [], loading: true, error: null });
     return onSnapshot(
       q,
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T), loading: false, error: null }),
@@ -34,7 +34,7 @@ export function useDocument<T>(ref: DocumentReference | null, key: string) {
       setState({ data: null, loading: false, error: null });
       return;
     }
-    setState((s) => ({ ...s, loading: true }));
+    setState({ data: null, loading: true, error: null });
     return onSnapshot(
       ref,
       (snap) => setState({ data: snap.exists() ? ({ id: snap.id, ...snap.data() } as T) : null, loading: false, error: null }),
