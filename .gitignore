@@ -9,3 +9,4 @@ dev-dist
 *.tsbuildinfo
 firebase-debug.log
 firestore-debug.log
+.vite
