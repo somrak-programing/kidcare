@@ -3,6 +3,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AllergyBanner from "@/components/AllergyBanner";
 import ErrorState from "@/components/ErrorState";
+import VaccineTimeline from "@/components/VaccineTimeline";
 import { useChild } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { ageText, formatThaiDate, todayISO } from "@/domain/dates";
@@ -41,7 +42,7 @@ export default function ChildDetail() {
 
       <section id="vaccines" className="space-y-2">
         <h2 className="font-semibold">วัคซีน</h2>
-        {/* Task 11: <VaccineTimeline fid={fid} child={child} /> */}
+        <VaccineTimeline fid={fid} child={child} />
       </section>
 
       <section id="appointments" className="space-y-2">
