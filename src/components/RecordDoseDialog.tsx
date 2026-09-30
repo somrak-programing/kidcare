@@ -81,7 +81,7 @@ export default function RecordDoseDialog({ fid, child, dose, doses, open, onOpen
         <DialogHeader><DialogTitle>{dose.vaccineName} เข็ม {dose.doseNo}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={given} onChange={(e) => setGiven(e.target.checked)} /> ฉีดแล้ว
+            <input type="checkbox" checked={given} onChange={(e) => { setGiven(e.target.checked); setError(null); }} /> ฉีดแล้ว
           </label>
           {given && (
             <div className="space-y-1">

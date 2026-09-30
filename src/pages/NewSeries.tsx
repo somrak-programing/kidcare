@@ -17,7 +17,7 @@ export default function NewSeries() {
   const { id: cid = "" } = useParams();
   const fid = useFamilyId();
   const nav = useNavigate();
-  const { data: child, error: childError } = useChild(fid, cid);
+  const { data: child, error: childError, loading } = useChild(fid, cid);
   const uid = useId();
   const [tplKey, setTplKey] = useState(CUSTOM_TEMPLATES[0].key);
   const tpl = CUSTOM_TEMPLATES.find((t) => t.key === tplKey)!;
@@ -26,7 +26,6 @@ export default function NewSeries() {
   const [anchorDose, setAnchorDose] = useState(1);
   const [anchorDate, setAnchorDate] = useState(todayISO());
   const [reason, setReason] = useState("");
-  const [previewError, setPreviewError] = useState<string | null>(null);
 
   function pickTemplate(key: string) {
     const t = CUSTOM_TEMPLATES.find((x) => x.key === key)!;
@@ -40,14 +39,15 @@ export default function NewSeries() {
   const offsetsError = "error" in parsed ? parsed.error : null;
   const offsets = useMemo(() => ("offsets" in parsed ? parsed.offsets : []), [parsed]);
   const effectiveAnchor = Math.min(Math.max(anchorDose, 1), Math.max(offsets.length, 1));
-  const baseValid = Boolean(name.trim() && !offsetsError && offsets.length > 0 && anchorDate && !previewError);
-  const preview = useMemo(() => {
-    if (!baseValid) return [];
+  const baseValid = Boolean(name.trim() && !offsetsError && offsets.length > 0 && anchorDate);
+  const { preview, previewError } = useMemo(() => {
+    if (!baseValid) return { preview: [], previewError: null };
     try {
-      return generateCustomDoses({ name: name.trim(), vaccineCode: tpl.vaccineCode, dayOffsets: offsets }, { doseNo: effectiveAnchor, date: anchorDate });
-    } catch {
-      setPreviewError("วันที่ไม่ถูกต้อง");
-      return [];
+      const preview = generateCustomDoses({ name: name.trim(), vaccineCode: tpl.vaccineCode, dayOffsets: offsets }, { doseNo: effectiveAnchor, date: anchorDate });
+      return { preview, previewError: null };
+    } catch (err) {
+      console.error(err);
+      return { preview: [], previewError: "วันที่ไม่ถูกต้อง" };
     }
   }, [baseValid, name, tpl.vaccineCode, offsets, effectiveAnchor, anchorDate]);
 
@@ -55,8 +55,8 @@ export default function NewSeries() {
   const givenPreview = preview.filter((d) => d.given && d.givenDate);
   let anchorError: string | null = null;
   if (givenPreview.length > 0) {
-    if (childError) anchorError = "โหลดข้อมูลเด็กไม่สำเร็จ";
-    else if (!child) anchorError = "กำลังโหลดข้อมูลเด็ก…";
+    if (loading) anchorError = "กำลังโหลดข้อมูลเด็ก…";
+    else if (childError || !child) anchorError = "โหลดข้อมูลเด็กไม่สำเร็จ";
     else {
       const today = todayISO();
       for (const d of givenPreview) {
@@ -65,7 +65,7 @@ export default function NewSeries() {
       }
     }
   }
-  const valid = baseValid && !anchorError;
+  const valid = baseValid && !previewError && !anchorError;
 
   function onSave() {
     if (!valid) return;
@@ -88,7 +88,7 @@ export default function NewSeries() {
       </div>
       <div className="space-y-1">
         <Label htmlFor={`${uid}-offsets`}>วันที่ของแต่ละเข็ม นับจากเข็มแรก (วัน, คั่นด้วยจุลภาค)</Label>
-        <Input id={`${uid}-offsets`} value={offsetsText} onChange={(e) => { setOffsetsText(e.target.value); setPreviewError(null); }} />
+        <Input id={`${uid}-offsets`} value={offsetsText} onChange={(e) => setOffsetsText(e.target.value)} />
         {offsetsError && <p role="alert" className="text-sm text-destructive">{offsetsError}</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -100,7 +100,7 @@ export default function NewSeries() {
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${uid}-anchorDate`}>วันที่ของเข็มนั้น</Label>
-          <Input id={`${uid}-anchorDate`} type="date" value={anchorDate} onChange={(e) => { setAnchorDate(e.target.value); setPreviewError(null); }} />
+          <Input id={`${uid}-anchorDate`} type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} min="2000-01-01" max="2100-12-31" />
         </div>
       </div>
       {previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}
