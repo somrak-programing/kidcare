@@ -1,0 +1,9 @@
+name = "kidcare-extract"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "kidcare-xxxx"
+ALLOWED_UIDS = ""
+ALLOWED_ORIGIN = "https://kidcare-xxxx.web.app,http://localhost:5173"
