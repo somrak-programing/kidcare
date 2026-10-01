@@ -127,11 +127,11 @@ export function renameFamily(fid: string, name: string) {
   fire(updateDoc(familyDoc(fid), { name }));
 }
 
-/** owner เชิญสมาชิกด้วยอีเมล */
-export function inviteMember(fid: string, familyName: string, owner: User, email: string) {
+/** owner เชิญสมาชิกด้วยอีเมล — false = ปฏิเสธ (owner ไม่มีอีเมลที่ยืนยันแล้ว), true = ส่งคำสั่งเขียนแล้ว */
+export function inviteMember(fid: string, familyName: string, owner: User, email: string): boolean {
   if (!owner.email || !owner.emailVerified) {
     alert("บัญชีนี้ไม่มีอีเมลที่ยืนยันแล้ว เชิญไม่ได้");
-    return;
+    return false;
   }
   const e = normalizeEmail(email);
   fire(
@@ -145,6 +145,7 @@ export function inviteMember(fid: string, familyName: string, owner: User, email
     }),
     "เชิญไม่สำเร็จ (อีเมลนี้อาจมีคำเชิญค้างอยู่แล้ว)",
   );
+  return true;
 }
 
 export function cancelInvite(invite: Invite) {

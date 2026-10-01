@@ -53,10 +53,6 @@ export default function InviteChoice({ user, invites, onJoin, onCreateOwn }: Pro
       if (isStaleInviteError(e)) {
         const rest = list.filter((i) => i.id !== invite.id);
         setList(rest);
-        if (rest.length === 0) {
-          await createOwn();
-          return;
-        }
         setError(STALE_INVITE_MESSAGE);
       } else {
         setError(JOIN_FAILED_MESSAGE);

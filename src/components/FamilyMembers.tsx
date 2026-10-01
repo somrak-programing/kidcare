@@ -20,7 +20,7 @@ export default function FamilyMembers({ fid, family }: { fid: string; family: Fa
 
   const profiles = family.memberProfiles ?? {};
   const now = Date.now();
-  const pending = sent.filter((i) => i.familyId === fid && isInviteActive(i.createdAt?.toMillis() ?? null, now));
+  const pending = sent.filter((i) => i.familyId === fid);
 
   const nameOf = (uid: string) =>
     profiles[uid]?.name || profiles[uid]?.email || `สมาชิก …${uid.slice(-4)}`;
@@ -33,10 +33,16 @@ export default function FamilyMembers({ fid, family }: { fid: string; family: Fa
     if (norm === normalizeEmail(user.email ?? "")) return setError("ไม่สามารถเชิญตัวเองได้");
     if (Object.values(profiles).some((p) => normalizeEmail(p.email ?? "") === norm))
       return setError("อีเมลนี้เป็นสมาชิกอยู่แล้ว");
-    if (pending.some((i) => normalizeEmail(i.email) === norm)) return setError("มีคำเชิญอีเมลนี้อยู่แล้ว");
+    const existing = pending.find((i) => normalizeEmail(i.email) === norm);
+    if (existing) {
+      return setError(
+        isInviteActive(existing.createdAt?.toMillis() ?? null, now)
+          ? "มีคำเชิญอีเมลนี้อยู่แล้ว"
+          : "คำเชิญเดิมหมดอายุแล้ว — กดยกเลิกคำเชิญเดิมก่อน แล้วเชิญใหม่",
+      );
+    }
     setError(null);
-    inviteMember(fid, family.name, user, norm);
-    setEmail("");
+    if (inviteMember(fid, family.name, user, norm)) setEmail("");
   }
 
   function onRemove(uid: string) {
@@ -67,7 +73,7 @@ export default function FamilyMembers({ fid, family }: { fid: string; family: Fa
                   )}
                 </div>
                 {isOwner && uid !== family.ownerUid && (
-                  <Button size="sm" variant="outline" onClick={() => onRemove(uid)}>
+                  <Button size="sm" variant="outline" aria-label={`นำ ${nameOf(uid)} ออก`} onClick={() => onRemove(uid)}>
                     นำออก
                   </Button>
                 )}
@@ -112,8 +118,18 @@ export default function FamilyMembers({ fid, family }: { fid: string; family: Fa
               <ul className="space-y-2">
                 {pending.map((invite) => (
                   <li key={invite.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                    <span className="truncate">{invite.email}</span>
-                    <Button size="sm" variant="outline" onClick={() => cancelInvite(invite)}>
+                    <span className="truncate">
+                      {invite.email}
+                      {!isInviteActive(invite.createdAt?.toMillis() ?? null, now) && (
+                        <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">หมดอายุ</span>
+                      )}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label={`ยกเลิกคำเชิญ ${invite.email}`}
+                      onClick={() => cancelInvite(invite)}
+                    >
                       ยกเลิก
                     </Button>
                   </li>

@@ -46,6 +46,7 @@ export default function InviteBanner() {
       if (!sameUser()) return;
       if (isStaleInviteError(e)) {
         setHidden((h) => new Set(h).add(invite.id));
+        cancelInvite(invite);
         setError(STALE_INVITE_MESSAGE);
       } else {
         setError(JOIN_FAILED_MESSAGE);
@@ -79,9 +80,12 @@ export default function InviteBanner() {
         </div>
       ))}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <div role="alert" className="flex items-center justify-between gap-2 text-sm text-destructive">
+          <p>{error}</p>
+          <button type="button" aria-label="ปิด" className="px-2 text-base leading-none" onClick={() => setError(null)}>
+            ×
+          </button>
+        </div>
       )}
     </div>
   );
