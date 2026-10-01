@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,18 @@ import { useChild, useDoses } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { formatThaiDate, todayISO } from "@/domain/dates";
 import { findDuplicateTargets, matchImportedDoses, rowWarnings, type ImportRow } from "@/domain/importMatch";
-import { callExtract, ExtractClientError } from "@/lib/extractClient";
+import { callExtract, ExtractAbortedError, ExtractClientError } from "@/lib/extractClient";
 import { resizeToJpegBase64 } from "@/lib/resizeImage";
 import { saveImport } from "@/lib/repo/vaccines";
 import type { VaccineDose } from "@/types";
 
 const MAX_FILES = 6;
 const READ_FILE_ERROR = "อ่านไฟล์รูปไม่ได้ ลองถ่ายใหม่ หรือใช้รูปแบบ JPEG/PNG";
+const GENERIC_ERROR = "เกิดข้อผิดพลาด ลองอีกครั้ง";
+const READING_STATUS = "กำลังอ่านรูปด้วย AI อาจใช้เวลาเกือบนาที";
+
+/** Thrown only when resizing/decoding one of the picked files fails. */
+class ResizeError extends Error {}
 const selectCls = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm";
 
 type Patch = { target?: string; include?: boolean; dateGiven?: string | null; lotNo?: string | null; place?: string | null };
@@ -98,7 +103,7 @@ export default function ImportPinkBook() {
   const fid = useFamilyId();
   const nav = useNavigate();
   const { data: child, error } = useChild(fid, cid);
-  const { data: doses, loading: dosesLoading } = useDoses(fid, cid);
+  const { data: doses, loading: dosesLoading, error: dosesError } = useDoses(fid, cid);
   const fileId = useId();
   const [files, setFiles] = useState<File[]>([]);
   const [phase, setPhase] = useState<"pick" | "reading" | "review">("pick");
@@ -106,6 +111,16 @@ export default function ImportPinkBook() {
   const [msg, setMsg] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const today = todayISO();
+  const mounted = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
@@ -116,24 +131,30 @@ export default function ImportPinkBook() {
   if (!child) return <p className="text-muted-foreground">กำลังโหลด…</p>;
 
   async function onRead() {
-    if (!child) return;
+    if (!child || dosesError) return;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setMsg(null);
     setPhase("reading");
     try {
       // sequential: decoding several full-size photos at once can exhaust memory on phones
       const images: Awaited<ReturnType<typeof resizeToJpegBase64>>[] = [];
-      for (const f of files) {
+      for (const [i, f] of files.entries()) {
         try {
           images.push(await resizeToJpegBase64(f));
         } catch {
-          throw new ExtractClientError(READ_FILE_ERROR);
+          throw new ResizeError(`รูปที่ ${i + 1}: ${READ_FILE_ERROR}`);
         }
+        if (ctrl.signal.aborted) return;
       }
-      const records = await callExtract(images, child.birthDate);
+      const records = await callExtract(images, child.birthDate, ctrl.signal);
+      if (!mounted.current || ctrl.signal.aborted) return;
       setRows(matchImportedDoses(records, doses, child.birthDate, today));
       setPhase("review");
     } catch (e) {
-      setMsg(e instanceof ExtractClientError ? e.message : READ_FILE_ERROR);
+      if (!mounted.current || ctrl.signal.aborted || e instanceof ExtractAbortedError) return;
+      setMsg(e instanceof ResizeError || e instanceof ExtractClientError ? e.message : GENERIC_ERROR);
       setPhase("pick");
     }
   }
@@ -171,32 +192,34 @@ export default function ImportPinkBook() {
     <div className="space-y-4">
       <Link to={`/children/${cid}`} className="text-sm underline">← {child.nickname || child.name}</Link>
       <h1 className="text-xl font-bold">นำเข้าวัคซีนจากสมุดชมพู</h1>
+      <p role="status" aria-live="polite" className={phase === "reading" ? "sr-only" : "text-sm text-muted-foreground"}>
+        {phase === "reading" ? READING_STATUS : phase === "pick" ? note : null}
+      </p>
 
       {phase !== "review" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">ถ่ายรูปหน้าบันทึกวัคซีนให้ชัด เห็นวันที่ครบ ได้สูงสุด {MAX_FILES} รูป รูปจะถูกส่งไปให้ AI อ่านแล้วทิ้ง ไม่ถูกเก็บไว้</p>
-          <Label htmlFor={fileId} className={`flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-sm focus-within:ring-2 focus-within:ring-ring ${phase === "reading" ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-            <Camera size={18} /> เลือก/ถ่ายรูป
-          </Label>
-          <input id={fileId} type="file" accept="image/*" multiple className="sr-only" disabled={phase === "reading"}
+          <input id={fileId} type="file" accept="image/*" multiple className="peer sr-only" disabled={phase === "reading"}
             onChange={(e) => {
               const picked = Array.from(e.target.files ?? []);
               setNote(picked.length > MAX_FILES ? `เลือกได้สูงสุด ${MAX_FILES} รูป — ใช้ ${MAX_FILES} รูปแรก` : null);
               setFiles(picked.slice(0, MAX_FILES));
               e.target.value = ""; // allow re-selecting the same file
             }} />
-          {note && <p role="status" className="text-sm text-muted-foreground">{note}</p>}
+          <Label htmlFor={fileId} className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-sm peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
+            <Camera size={18} /> เลือก/ถ่ายรูป
+          </Label>
           {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {previews.map((u, i) => <img key={u} src={u} alt={`หน้า ${i + 1}`} className="aspect-[3/4] w-full rounded object-cover" />)}
             </div>
           )}
           {msg && <p role="alert" className="text-sm text-destructive">{msg}</p>}
-          {dosesLoading && <p className="text-sm text-muted-foreground">กำลังโหลดข้อมูลวัคซีน…</p>}
-          <Button type="button" className="w-full" disabled={!files.length || phase === "reading" || dosesLoading} onClick={onRead}>
+          {dosesError && <ErrorState error={dosesError} />}
+          {dosesLoading && !dosesError && <p className="text-sm text-muted-foreground">กำลังโหลดข้อมูลวัคซีน…</p>}
+          <Button type="button" className="w-full" disabled={!files.length || phase === "reading" || dosesLoading || !!dosesError} onClick={onRead}>
             {phase === "reading" ? <><Loader2 size={16} className="animate-spin" /> กำลังอ่าน… (อาจใช้เวลาเกือบนาที)</> : "อ่านด้วย AI"}
           </Button>
-          {phase === "reading" && <p role="status" aria-live="polite" className="sr-only">กำลังอ่านรูปด้วย AI อาจใช้เวลาเกือบนาที</p>}
         </div>
       )}
 

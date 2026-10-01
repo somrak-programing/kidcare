@@ -4,7 +4,7 @@ import { auth } from "./firebase";
 export class ExtractClientError extends Error {}
 
 const TIMEOUT_MS = 90_000;
-const TIMEOUT_MSG = "ใช้เวลานานเกินไป ลองใหม่อีกครั้ง หรือส่งทีละน้อยรูปลง";
+const TIMEOUT_MSG = "ใช้เวลานานเกินไป ลดจำนวนรูปแล้วลองใหม่";
 
 const MESSAGES: Record<string, string> = {
   unauthorized: "กรุณาออกจากระบบแล้วเข้าใหม่",
@@ -18,14 +18,37 @@ const MESSAGES: Record<string, string> = {
   upstream: "บริการ AI ขัดข้อง หรือเครดิตหมด",
 };
 
-export async function callExtract(images: { mediaType: string; data: string }[], birthDate: string): Promise<ImportedRecord[]> {
+/** Thrown when the caller's own AbortSignal fires (e.g. page unmounted) — not a timeout. */
+export class ExtractAbortedError extends Error {
+  constructor() {
+    super("aborted");
+    this.name = "AbortError";
+  }
+}
+
+export async function callExtract(
+  images: { mediaType: string; data: string }[],
+  birthDate: string,
+  signal?: AbortSignal,
+): Promise<ImportedRecord[]> {
+  if (signal?.aborted) throw new ExtractAbortedError();
   if (!navigator.onLine) throw new ExtractClientError("ต้องต่ออินเทอร์เน็ตเพื่ออ่านรูป");
   const base = import.meta.env.VITE_WORKER_URL;
   if (!base) throw new ExtractClientError("ยังไม่ได้ตั้งค่าบริการอ่านรูป (VITE_WORKER_URL)");
   const token = await auth.currentUser?.getIdToken();
+  if (signal?.aborted) throw new ExtractAbortedError();
   if (!token) throw new ExtractClientError(MESSAGES.unauthorized);
+  // one controller for the fetch: aborted by either the timeout or the caller's signal
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, TIMEOUT_MS);
+  const onUserAbort = () => ctrl.abort();
+  signal?.addEventListener("abort", onUserAbort, { once: true });
+  const abortError = () =>
+    timedOut ? new ExtractClientError(TIMEOUT_MSG) : signal?.aborted ? new ExtractAbortedError() : null;
   let res: Response;
   let body: { error?: string; records?: ImportedRecord[] };
   try {
@@ -37,16 +60,18 @@ export async function callExtract(images: { mediaType: string; data: string }[],
         signal: ctrl.signal,
       });
     } catch {
-      throw new ExtractClientError(ctrl.signal.aborted ? TIMEOUT_MSG : "เชื่อมต่อบริการอ่านรูปไม่ได้");
+      throw abortError() ?? new ExtractClientError("เชื่อมต่อบริการอ่านรูปไม่ได้");
     }
     try {
       body = (await res.json()) as typeof body;
     } catch {
-      if (ctrl.signal.aborted) throw new ExtractClientError(TIMEOUT_MSG);
+      const aborted = abortError();
+      if (aborted) throw aborted;
       body = {};
     }
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onUserAbort);
   }
   if (!res.ok) throw new ExtractClientError(MESSAGES[body.error ?? ""] ?? `เกิดข้อผิดพลาด (${res.status})`);
   return body.records ?? [];
