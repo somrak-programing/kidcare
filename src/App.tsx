@@ -10,6 +10,7 @@ import NewSeries from "@/pages/NewSeries";
 import Home from "@/pages/Home";
 import AppointmentForm from "@/pages/AppointmentForm";
 import Appointments from "@/pages/Appointments";
+import ImportPinkBook from "@/pages/ImportPinkBook";
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/children/:id/edit" element={<ChildForm />} />
         <Route path="/children/:id/allergies" element={<Allergies />} />
         <Route path="/children/:id/series/new" element={<NewSeries />} />
+        <Route path="/children/:id/import" element={<ImportPinkBook />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

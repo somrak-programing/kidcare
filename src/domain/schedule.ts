@@ -16,6 +16,10 @@ export interface DoseDraft {
   given?: boolean;
   givenDate?: ISODate | null;
   givenDateUnknown?: boolean;
+  lotNo?: string;
+  place?: string;
+  source?: "manual" | "import";
+  importConfidence?: "high" | "medium" | "low";
 }
 
 export interface SeriesDraft {

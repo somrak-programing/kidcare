@@ -1,5 +1,6 @@
 import { doc, serverTimestamp, updateDoc, writeBatch, type WriteBatch } from "firebase/firestore";
 import { EPI_TEMPLATE } from "@/data/epi";
+import type { ImportedRecord } from "@/domain/importMatch";
 import { generateEpiSeries, type DoseDraft, type SeriesDraft } from "@/domain/schedule";
 import type { ISODate, VaccineDose } from "@/types";
 import { db } from "../firebase";
@@ -19,7 +20,10 @@ function newDoseDoc(fid: string, cid: string, seriesId: string, d: DoseDraft): O
     given: d.given ?? false,
     givenDate: d.givenDate ?? null,
     givenDateUnknown: d.givenDateUnknown ?? false,
-    source: "manual",
+    lotNo: d.lotNo,
+    place: d.place,
+    source: d.source ?? "manual",
+    importConfidence: d.importConfidence,
   };
 }
 
@@ -83,4 +87,54 @@ export function deleteSeries(fid: string, cid: string, seriesId: string, doseIds
   for (const id of doseIds) batch.delete(doc(childSub(fid, cid, "vaccineDoses"), id));
   batch.delete(doc(childSub(fid, cid, "vaccineSeries"), seriesId));
   fire(batch.commit(), "ลบไม่สำเร็จ");
+}
+
+export function saveImport(fid: string, cid: string, rows: { target: string; record: ImportedRecord }[]) {
+  if (!rows.length) return;
+  const batch = writeBatch(db);
+  const doseCol = childSub(fid, cid, "vaccineDoses");
+
+  for (const { target, record: r } of rows) {
+    if (target === "new") continue;
+    batch.update(doc(doseCol, target), {
+      given: true,
+      givenDate: r.dateGiven,
+      givenDateUnknown: r.dateGiven === null,
+      lotNo: r.lotNo ?? undefined,
+      place: r.place ?? undefined,
+      source: "import",
+      importConfidence: r.confidence,
+    });
+  }
+
+  // รายการที่ไม่มีเข็มให้จับคู่ → สร้างชุดใหม่ ต่อวัคซีน 1 ชุด
+  const groups = new Map<string, ImportedRecord[]>();
+  for (const { target, record: r } of rows) {
+    if (target !== "new") continue;
+    const k = r.vaccineCode === "OTHER" ? `OTHER|${r.vaccineRaw.trim()}` : r.vaccineCode;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  for (const recs of groups.values()) {
+    recs.sort((a, b) => (a.dateGiven ?? "9999").localeCompare(b.dateGiven ?? "9999"));
+    const name = recs[0].vaccineRaw.trim() || recs[0].vaccineCode;
+    addSeriesToBatch(batch, fid, cid, {
+      name,
+      source: "custom",
+      templateKey: "import",
+      doses: recs.map((r, i) => ({
+        vaccineName: name,
+        vaccineCode: r.vaccineCode === "OTHER" ? undefined : r.vaccineCode,
+        doseNo: r.doseNo ?? i + 1,
+        dueDate: r.dateGiven,
+        given: true,
+        givenDate: r.dateGiven,
+        givenDateUnknown: r.dateGiven === null,
+        lotNo: r.lotNo ?? undefined,
+        place: r.place ?? undefined,
+        source: "import",
+        importConfidence: r.confidence,
+      })),
+    });
+  }
+  fire(batch.commit());
 }

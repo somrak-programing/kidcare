@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarPlus, CheckSquare, Plus, Trash2 } from "lucide-react";
+import { Camera, CalendarPlus, CheckSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BulkGivenDialog from "@/components/BulkGivenDialog";
 import CalendarButtons from "@/components/CalendarButtons";
@@ -42,6 +42,7 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
       <div className="flex flex-wrap gap-2">
         <Button asChild size="sm"><Link to={`/children/${child.id}/series/new`}><Plus size={14} /> เพิ่มชุดวัคซีน</Link></Button>
         <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}><CheckSquare size={14} /> ติ๊กเข็มที่ฉีดแล้ว</Button>
+        <Button asChild size="sm" variant="outline"><Link to={`/children/${child.id}/import`}><Camera size={14} /> นำเข้าจากสมุดชมพู</Link></Button>
         {!seriesLoading && !hasEpi && (
           <Button size="sm" variant="outline"
             onClick={() => confirm("สร้างตารางวัคซีนพื้นฐาน (EPI) จากวันเกิดของเด็ก?") && createEpiSeries(fid, child.id, child.birthDate)}>
