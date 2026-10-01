@@ -32,6 +32,6 @@ For each record:
 
 Never guess a value you cannot read — use null, lower the confidence, and explain in note.`;
 
-export function userPrompt(imageCount: number, birthDate: string): string {
-  return `There are ${imageCount} image(s) above, pageIndex 0 to ${imageCount - 1}. The child's birth date is ${birthDate} (Gregorian). Extract all given vaccine doses.`;
+export function userPrompt(imageCount: number, birthDate: string, today: string): string {
+  return `There are ${imageCount} image(s) above, pageIndex 0 to ${imageCount - 1}. The child's birth date is ${birthDate} (Gregorian). Today's date is ${today} (Gregorian); no dose can be after it. Extract all given vaccine doses.`;
 }
