@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { exportPKCS8, generateKeyPair, jwtVerify, type KeyLike } from "jose";
 import { createFirestoreReader, decodeDoc, getAccessToken, type ServiceAccount } from "../src/reminders/firestore";
 import { UpstreamError } from "../src/upstream";
@@ -69,8 +69,19 @@ describe("loadReminderItems", () => {
     ]);
     const doseQuery = JSON.parse(f.calls.find((c) => c.url.endsWith("c1:runQuery"))!.init!.body as string).structuredQuery;
     expect(doseQuery.where).toEqual({ fieldFilter: { field: { fieldPath: "given" }, op: "EQUAL", value: { booleanValue: false } } });
+    const apptQuery = JSON.parse(f.calls.find((c) => c.url === `${base}/families/F:runQuery` && JSON.parse(c.init!.body as string).structuredQuery.from[0].collectionId === "appointments")!.init!.body as string).structuredQuery;
+    expect(apptQuery.where).toEqual({ fieldFilter: { field: { fieldPath: "done" }, op: "EQUAL", value: { booleanValue: false } } });
     expect((f.calls[1].init!.headers as Record<string, string>).Authorization).toBe("Bearer at");
     expect(f.calls.filter((c) => c.url.startsWith("https://oauth2"))).toHaveLength(1);
+  });
+
+  test("warns when the family has no children (wrong FAMILY_ID)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = fakeFetch((url) => (url.startsWith("https://oauth2") ? json({ access_token: "at" }) : json([{ readTime: "x" }])));
+    const items = await createFirestoreReader(sa, f).loadReminderItems("F", ["2026-10-02"]);
+    expect(items).toEqual([]);
+    expect(warn).toHaveBeenCalledWith("reminders: family has no children — check FAMILY_ID");
+    warn.mockRestore();
   });
 
   test("HTTP errors become UpstreamError", async () => {

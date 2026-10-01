@@ -38,6 +38,7 @@ export interface Deps {
 export const TEST_MESSAGE = "✅ ทดสอบแจ้งเตือนจาก KidCare — ถ้าเห็นข้อความนี้ แปลว่าตั้งค่าเรียบร้อย ทุกเช้า 7 โมงจะมีแจ้งเตือนนัดของวันนี้และพรุ่งนี้";
 
 const MAX_BODY_BYTES = 13_000_000;
+const MAX_WEBHOOK_BYTES = 1_000_000;
 
 const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
@@ -88,15 +89,23 @@ export async function handle(req: Request, env: Env, deps: Deps): Promise<Respon
   try {
     if (path === "/line/webhook") {
       method("POST");
+      if (!env.LINE_CHANNEL_SECRET) {
+        console.error("config: LINE_CHANNEL_SECRET missing");
+        throw new HttpError(500, "internal");
+      }
+      if (Number(req.headers.get("Content-Length") ?? 0) > MAX_WEBHOOK_BYTES) throw new HttpError(413, "too_large");
       const body = await req.text();
+      if (body.length > MAX_WEBHOOK_BYTES) throw new HttpError(413, "too_large");
       if (!(await verifyLineSignature(body, req.headers.get("x-line-signature"), env.LINE_CHANNEL_SECRET))) {
         throw new HttpError(401, "unauthorized");
       }
+      let parsed: unknown;
       try {
-        JSON.parse(body);
+        parsed = JSON.parse(body);
       } catch {
         throw new HttpError(400, "bad_request");
       }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new HttpError(400, "bad_request");
       await handleLineWebhook(body, needLine(deps));
       return json(200, {}, cors);
     }
@@ -192,12 +201,20 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       (async () => {
+        let sa: ServiceAccount;
+        try {
+          sa = JSON.parse(env.GCP_SA_KEY) as ServiceAccount;
+        } catch {
+          // JSON.parse errors embed the input text; never log them.
+          console.error("reminders failed", "GCP_SA_KEY invalid");
+          return;
+        }
         const { store, api } = lineDeps(env);
         // A fresh reader per run: its cached OAuth token must not outlive this invocation.
-        const reader = createFirestoreReader(JSON.parse(env.GCP_SA_KEY) as ServiceAccount);
+        const reader = createFirestoreReader(sa);
         const r = await runDailyReminders({ now: new Date(), familyId: env.FAMILY_ID, reader, store, api });
-        console.log(`reminders: sent to ${r.sent} recipient(s)`);
-      })().catch((e) => console.error("reminders failed", e instanceof Error ? e.message : "unknown")),
+        console.log(`reminders: recipients=${r.recipients} items=${r.items} sent=${r.sent}`);
+      })().catch((e) => console.error("reminders failed", e instanceof UpstreamError ? e.message : e instanceof Error ? e.name : "unknown")),
     );
   },
 };

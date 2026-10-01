@@ -22,11 +22,16 @@ export async function handleLineWebhook(
     if (ev.type === "follow") {
       const existing = await deps.store.get(userId);
       if (!existing) {
-        const { displayName } = await deps.api.profile(userId).catch(() => ({ displayName: "" }));
+        const { displayName } = await deps.api.profile(userId).catch(() => {
+          console.error("line profile failed");
+          return { displayName: "" };
+        });
         await deps.store.put({ userId, displayName, status: "pending", addedAt: now().toISOString() });
       }
       if (ev.replyToken) {
-        await deps.api.reply(ev.replyToken, existing?.status === "approved" ? REPLY_WELCOME_BACK : REPLY_PENDING).catch(() => {});
+        await deps.api.reply(ev.replyToken, existing?.status === "approved" ? REPLY_WELCOME_BACK : REPLY_PENDING).catch(() => {
+          console.error("line reply failed");
+        });
       }
     } else if (ev.type === "unfollow") {
       await deps.store.delete(userId);

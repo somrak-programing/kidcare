@@ -186,6 +186,55 @@ describe("line routes", () => {
     expect([r.status, await r.json()]).toEqual([400, { error: "bad_request" }]);
   });
 
+  test("webhook with empty LINE_CHANNEL_SECRET is 500 internal and touches nothing", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const line = lineDeps();
+    const r = await handle(new Request("https://w.example/line/webhook", { method: "POST", body: followBody, headers: { "x-line-signature": sign(followBody) } }), { ...env, LINE_CHANNEL_SECRET: "" }, { ...deps(), line });
+    expect([r.status, await r.json()]).toEqual([500, { error: "internal" }]);
+    expect(spy).toHaveBeenCalledWith("config: LINE_CHANNEL_SECRET missing");
+    expect(await line.store.list()).toEqual([]);
+    spy.mockRestore();
+  });
+
+  test("webhook rejects oversized bodies with 413 (header and actual length)", async () => {
+    const line = lineDeps();
+    const byHeader = new Request("https://w.example/line/webhook", { method: "POST", body: followBody, headers: { "x-line-signature": sign(followBody), "Content-Length": "1000001" } });
+    const r1 = await handle(byHeader, env, { ...deps(), line });
+    expect([r1.status, await r1.json()]).toEqual([413, { error: "too_large" }]);
+
+    const big = "x".repeat(1_000_001);
+    const r2 = await handle(new Request("https://w.example/line/webhook", { method: "POST", body: big, headers: { "x-line-signature": sign(big) } }), env, { ...deps(), line });
+    expect([r2.status, await r2.json()]).toEqual([413, { error: "too_large" }]);
+    expect(await line.store.list()).toEqual([]);
+  });
+
+  test.each(["null", "[]", '"x"', "42"])("webhook with signed non-object JSON %s is 400 bad_request", async (b) => {
+    const line = lineDeps();
+    const r = await handle(new Request("https://w.example/line/webhook", { method: "POST", body: b, headers: { "x-line-signature": sign(b) } }), env, { ...deps(), line });
+    expect([r.status, await r.json()]).toEqual([400, { error: "bad_request" }]);
+  });
+
+  test.each([
+    ["POST", "/line/recipients/U1/approve"],
+    ["DELETE", "/line/recipients/U1"],
+    ["POST", "/line/test"],
+  ])("%s %s is 403 for a non-allowed uid and 401 without Authorization", async (method, path) => {
+    const line = lineDeps();
+    await line.store.put({ userId: "U1", displayName: "แม่", status: "pending", addedAt: "x" });
+    await line.store.put({ userId: "U2", displayName: "", status: "approved", addedAt: "x" });
+    const before = await line.store.list();
+
+    const r403 = await handle(req({ method, path, body: "" }), env, { ...deps({ uid: "uid-mallory" }), line });
+    expect([r403.status, await r403.json()]).toEqual([403, { error: "forbidden" }]);
+
+    const noAuth = new Request(`https://w.example${path}`, { method, headers: { Origin: "https://kid.web.app" } });
+    const r401 = await handle(noAuth, env, { ...deps(), line });
+    expect(r401.status).toBe(401);
+
+    expect(await line.store.list()).toEqual(before);
+    expect(line.api.multicast).not.toHaveBeenCalled();
+  });
+
   test("recipients list / approve / delete require an allowed user", async () => {
     const line = lineDeps();
     await line.store.put({ userId: "U1", displayName: "แม่", status: "pending", addedAt: "x" });
@@ -216,14 +265,25 @@ describe("line routes", () => {
 });
 
 describe("scheduled", () => {
-  test("invalid GCP_SA_KEY is logged, not thrown", async () => {
+  async function runScheduled(key: string) {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const pending: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p) } as unknown as ExecutionContext;
-    const kv = memoryKV();
-    await worker.scheduled({} as ScheduledController, { ...env, GCP_SA_KEY: "not json", LINE_KV: kv as never }, ctx);
+    await worker.scheduled({} as ScheduledController, { ...env, GCP_SA_KEY: key, LINE_KV: memoryKV() as never }, ctx);
     await Promise.all(pending);
-    expect(spy).toHaveBeenCalledWith("reminders failed", expect.any(String));
+    const calls = spy.mock.calls;
     spy.mockRestore();
+    return calls;
+  }
+
+  test("invalid GCP_SA_KEY is logged with a fixed string, not thrown", async () => {
+    const calls = await runScheduled("not json");
+    expect(calls).toContainEqual(["reminders failed", "GCP_SA_KEY invalid"]);
+  });
+
+  test("malformed GCP_SA_KEY never leaks its text into logs", async () => {
+    const calls = await runScheduled('{"private_key": "MIIEvQIBAD-SECRET"');
+    expect(calls).toContainEqual(["reminders failed", "GCP_SA_KEY invalid"]);
+    expect(JSON.stringify(calls)).not.toContain("MIIEvQIBAD-SECRET");
   });
 });

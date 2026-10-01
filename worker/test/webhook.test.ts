@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { LineApi } from "../src/line/api";
 import { kvRecipientStore } from "../src/line/recipients";
 import { REPLY_PENDING, REPLY_WELCOME_BACK, handleLineWebhook } from "../src/line/webhook";
+import { UpstreamError } from "../src/upstream";
 import { memoryKV } from "./helpers";
 
 function api(over: Partial<LineApi> = {}): LineApi {
@@ -37,6 +38,15 @@ describe("handleLineWebhook", () => {
     const store = kvRecipientStore(memoryKV());
     await handleLineWebhook(follow("U1"), { store, api: api({ profile: vi.fn(async () => { throw new Error("x"); }) }), now: NOW });
     expect((await store.get("U1"))?.displayName).toBe("");
+  });
+
+  test("profile and reply failures log only fixed labels (no userId, no message)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = kvRecipientStore(memoryKV());
+    const boom = async () => { throw new UpstreamError("line /v2/bot/profile/U1 500"); };
+    await handleLineWebhook(follow("U1"), { store, api: api({ profile: vi.fn(boom), reply: vi.fn(boom) }), now: NOW });
+    expect(spy.mock.calls).toEqual([["line profile failed"], ["line reply failed"]]);
+    spy.mockRestore();
   });
 
   test("unfollow deletes; non-user sources and empty payloads are ignored", async () => {

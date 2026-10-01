@@ -89,6 +89,7 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
     async loadReminderItems(familyId: string, dates: string[]): Promise<ReminderItem[]> {
       const fam = `families/${familyId}`;
       const children = await runQuery(fam, "children");
+      if (!children.length) console.warn("reminders: family has no children — check FAMILY_ID");
       const nameOf = new Map(children.map((c) => [c.id, str(c.nickname) ?? str(c.name) ?? ""]));
       const items: ReminderItem[] = [];
 
