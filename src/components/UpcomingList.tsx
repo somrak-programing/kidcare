@@ -8,7 +8,19 @@ import { groupUpcoming, type UpcomingItem } from "@/domain/upcoming";
 import { setAppointmentDone } from "@/lib/repo/appointments";
 import type { Child } from "@/types";
 
-export default function UpcomingList({ fid, items, kids, showAll = false }: { fid: string; items: UpcomingItem[]; kids: Child[]; showAll?: boolean }) {
+export default function UpcomingList({
+  fid,
+  items,
+  kids,
+  showAll = false,
+  columns = 1,
+}: {
+  fid: string;
+  items: UpcomingItem[];
+  kids: Child[];
+  showAll?: boolean;
+  columns?: 1 | 2;
+}) {
   const g = groupUpcoming(items, todayISO());
   const who = (cid: string) => {
     const c = kids.find((x) => x.id === cid);
@@ -30,7 +42,7 @@ export default function UpcomingList({ fid, items, kids, showAll = false }: { fi
         list.length ? (
           <div key={label} className="space-y-2.5">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label} ({list.length})</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className={columns === 2 ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-2.5"}>
               {list.map((it) => (
                 <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-xl border-l-4 ${border} border-t border-r border-b bg-card p-3.5 shadow-xs transition-colors hover:border-primary/40`}>
                   <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">

@@ -38,7 +38,7 @@ export default function Appointments() {
       ) : childrenLoading || dosesLoading || apptsLoading ? (
         <p className="text-muted-foreground">กำลังโหลด…</p>
       ) : (
-        <UpcomingList fid={fid} items={items} kids={children} showAll />
+        <UpcomingList fid={fid} items={items} kids={children} showAll columns={2} />
       )}
     </div>
   );
