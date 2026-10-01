@@ -108,6 +108,9 @@ service cloud.firestore {
         match /temperatureLogs/{id} {
           allow read, write: if isMember(fid);
         }
+        match /growth/{id} {
+          allow read, write: if isMember(fid);
+        }
       }
     }
 

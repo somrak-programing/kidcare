@@ -99,3 +99,12 @@ export function useTemperatureLogs(fid: string, cid: string | null) {
   return r;
 }
 
+export function useGrowth(fid: string, cid: string | null) {
+  const r = useCollection<import("@/types").GrowthRecord>(
+    cid ? query(childSub(fid, cid, "growth"), orderBy("date", "desc")) : null,
+    `growth/${fid}/${cid ?? "-"}`,
+  );
+  return r;
+}
+
+

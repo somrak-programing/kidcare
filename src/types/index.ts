@@ -173,3 +173,20 @@ export interface TemperatureLog {
   createdAt?: Timestamp;
 }
 export type TemperatureLogInput = Omit<TemperatureLog, "id" | "familyId">;
+
+// --- Phase 3: Growth Tracking ---
+
+export interface GrowthRecord {
+  id: string;
+  familyId: string;
+  childId: string;
+  date: ISODate;
+  ageMonths: number;
+  weightKg?: number;
+  heightCm?: number;
+  headCircumferenceCm?: number;
+  notes?: string;
+  createdAt?: Timestamp;
+}
+export type GrowthRecordInput = Omit<GrowthRecord, "id" | "familyId">;
+

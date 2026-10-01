@@ -8,7 +8,7 @@ export const childDoc = (fid: string, cid: string) => doc(db, "families", fid, "
 export const childSub = (
   fid: string,
   cid: string,
-  name: "allergies" | "vaccineSeries" | "vaccineDoses" | "illnesses" | "visits" | "medications" | "temperatureLogs",
+  name: "allergies" | "vaccineSeries" | "vaccineDoses" | "illnesses" | "visits" | "medications" | "temperatureLogs" | "growth",
 ) => collection(db, "families", fid, "children", cid, name);
 export const appointmentsCol = (fid: string) => collection(db, "families", fid, "appointments");
 

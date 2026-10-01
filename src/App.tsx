@@ -16,6 +16,9 @@ import IllnessForm from "@/pages/IllnessForm";
 import IllnessDetail from "@/pages/IllnessDetail";
 import VisitForm from "@/pages/VisitForm";
 import MedicationForm from "@/pages/MedicationForm";
+import Growth from "@/pages/Growth";
+import GrowthForm from "@/pages/GrowthForm";
+import MedicalReport from "@/pages/MedicalReport";
 
 export default function App() {
   return (
@@ -44,6 +47,9 @@ export default function App() {
         <Route path="/children/:id/illnesses/:illnessId/edit" element={<IllnessForm />} />
         <Route path="/children/:id/visits/new" element={<VisitForm />} />
         <Route path="/children/:id/medications/new" element={<MedicationForm />} />
+        <Route path="/children/:id/growth" element={<Growth />} />
+        <Route path="/children/:id/growth/new" element={<GrowthForm />} />
+        <Route path="/children/:id/report" element={<MedicalReport />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

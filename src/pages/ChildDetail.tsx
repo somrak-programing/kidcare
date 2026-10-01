@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Activity, ChevronRight, Pencil, Thermometer } from "lucide-react";
+import { Activity, ChevronRight, Pencil, Printer, Thermometer, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AllergyBanner from "@/components/AllergyBanner";
 import ErrorState from "@/components/ErrorState";
 import QuickTempDialog from "@/components/QuickTempDialog";
 import VaccineTimeline from "@/components/VaccineTimeline";
 import CalendarButtons from "@/components/CalendarButtons";
-import { useChild, useIllnesses, useOpenAppointments, useTemperatureLogs } from "@/hooks/data";
+import { useChild, useGrowth, useIllnesses, useOpenAppointments, useTemperatureLogs } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { ageText, formatThaiDate, todayISO } from "@/domain/dates";
 import { calendarName } from "@/domain/names";
@@ -18,6 +18,8 @@ export default function ChildDetail() {
   const { data: child, loading, error } = useChild(fid, cid);
   const { data: illnesses } = useIllnesses(fid, cid);
   const { data: tempLogs } = useTemperatureLogs(fid, cid);
+  const { data: growth } = useGrowth(fid, cid);
+  const latestGrowth = growth[0];
 
   const [tempDialogOpen, setTempDialogOpen] = useState(false);
 
@@ -86,6 +88,39 @@ export default function ChildDetail() {
             ไม่มีอาการป่วยในขณะนี้ แตะ "บันทึกไข้" เพื่อวัดอุณหภูมิด่วนได้ตลอดเวลา
           </p>
         )}
+      </div>
+
+      {/* ทางลัด: การเจริญเติบโต & พิมพ์รายงานให้แพทย์ */}
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to={`/children/${cid}/growth`}
+          className="flex items-center justify-between rounded-lg border bg-card p-3 text-xs hover:border-primary/50 transition-colors"
+        >
+          <div className="space-y-0.5">
+            <span className="font-semibold text-sm flex items-center gap-1.5">
+              <TrendingUp size={15} className="text-primary" /> การเจริญเติบโต
+            </span>
+            <span className="text-muted-foreground block">
+              {latestGrowth
+                ? `${latestGrowth.weightKg ? `${latestGrowth.weightKg} กก.` : ""} ${latestGrowth.heightCm ? `${latestGrowth.heightCm} ซม.` : ""}`
+                : "กราฟน้ำหนัก/ส่วนสูง"}
+            </span>
+          </div>
+          <ChevronRight size={15} className="text-muted-foreground" />
+        </Link>
+
+        <Link
+          to={`/children/${cid}/report`}
+          className="flex items-center justify-between rounded-lg border bg-card p-3 text-xs hover:border-primary/50 transition-colors"
+        >
+          <div className="space-y-0.5">
+            <span className="font-semibold text-sm flex items-center gap-1.5">
+              <Printer size={15} className="text-primary" /> สรุปประวัติ / PDF
+            </span>
+            <span className="text-muted-foreground block">ยื่นหมอ / พิมพ์รายงาน</span>
+          </div>
+          <ChevronRight size={15} className="text-muted-foreground" />
+        </Link>
       </div>
 
       {(child.hospitals?.length ?? 0) > 0 && (
