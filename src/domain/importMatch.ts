@@ -1,4 +1,5 @@
 import type { VaccineCode } from "@/data/vaccineCodes";
+import { diffDays } from "./dates";
 import type { ISODate, VaccineDose } from "@/types";
 
 export interface ImportedRecord {
@@ -22,6 +23,8 @@ export interface ImportRow {
   warnings: string[];
 }
 
+const FAR_FROM_SCHEDULE_DAYS = 183;
+
 function dateProblem(r: ImportedRecord, birthDate: ISODate, today: ISODate): string | null {
   if (!r.dateGiven) return "อ่านวันที่ไม่ออก";
   if (r.dateGiven < birthDate) return "วันที่ก่อนวันเกิด";
@@ -35,6 +38,10 @@ export function rowWarnings(r: ImportedRecord, target: string, doses: VaccineDos
   if (dp) w.push(dp);
   if (r.confidence === "low") w.push("AI ไม่มั่นใจ ตรวจกับสมุดอีกครั้ง");
   if (target !== "new" && doses.find((d) => d.id === target)?.given) w.push("เข็มนี้บันทึกว่าฉีดแล้ว — จะเขียนทับ");
+  const dose = target === "new" ? undefined : doses.find((d) => d.id === target);
+  if (r.dateGiven && dose?.dueDate && Math.abs(diffDays(r.dateGiven, dose.dueDate)) > FAR_FROM_SCHEDULE_DAYS) {
+    w.push("วันที่ฉีดห่างจากกำหนดของเข็มนี้มาก — ตรวจว่าจับคู่ถูกเข็ม");
+  }
   return w;
 }
 
@@ -45,7 +52,7 @@ export function matchImportedDoses(records: ImportedRecord[], doses: VaccineDose
     .map((r, i) => ({ r, i }))
     .sort((a, b) => (a.r.dateGiven ?? "9999").localeCompare(b.r.dateGiven ?? "9999"));
 
-  // รอบแรก (ก): มีเลขเข็ม → จับตรงตัว
+  // รอบ 1ก: มีเลขเข็ม → จับตรงตัว (code + doseNo) ที่ยังไม่ถูกใช้
   for (const { r, i } of order) {
     if (r.vaccineCode === "OTHER" || r.doseNo === null) continue;
     const m = doses.find((d) => d.vaccineCode === r.vaccineCode && d.doseNo === r.doseNo && !used.has(d.id));
@@ -54,9 +61,17 @@ export function matchImportedDoses(records: ImportedRecord[], doses: VaccineDose
       targets[i] = m.id;
     }
   }
-  // รอบแรก (ข): เลขเข็มในตาราง EPI ไม่ต่อเนื่อง (OPV 3–5, DTP 4–5) → ถ้าไม่ตรงตัว ใช้ลำดับที่ (เข็มที่ N ของวัคซีนนั้น)
+  // รอบ 1ข: ใช้ลำดับที่ เฉพาะเมื่อเลขเข็มนั้น "ไม่มีอยู่เลย" ในวัคซีนนั้น (เช่น สมุดเก่านับ OPV 1,2 แต่ตาราง EPI เริ่มที่ 3)
+  const doseNosByCode = new Map<string, Set<number>>();
+  for (const d of doses) {
+    if (!d.vaccineCode) continue;
+    const set = doseNosByCode.get(d.vaccineCode) ?? new Set<number>();
+    set.add(d.doseNo);
+    doseNosByCode.set(d.vaccineCode, set);
+  }
   for (const { r, i } of order) {
     if (r.vaccineCode === "OTHER" || r.doseNo === null || targets[i] !== "new") continue;
+    if (doseNosByCode.get(r.vaccineCode)?.has(r.doseNo)) continue;
     const sameCode = doses.filter((d) => d.vaccineCode === r.vaccineCode).sort((a, b) => a.doseNo - b.doseNo);
     const m = sameCode[r.doseNo - 1];
     if (m && !used.has(m.id)) {
@@ -64,9 +79,9 @@ export function matchImportedDoses(records: ImportedRecord[], doses: VaccineDose
       targets[i] = m.id;
     }
   }
-  // รอบสอง: ไม่มีเลขเข็ม (หรือจับไม่ได้) → เข็มที่ยังไม่ฉีดลำดับแรกของวัคซีนนั้น ตามลำดับวันที่
+  // รอบ 2: ไม่มีเลขเข็ม → เข็มที่ยังไม่ฉีดลำดับแรกของวัคซีนนั้น ตามลำดับวันที่
   for (const { r, i } of order) {
-    if (r.vaccineCode === "OTHER" || targets[i] !== "new") continue;
+    if (r.vaccineCode === "OTHER" || r.doseNo !== null || targets[i] !== "new") continue;
     const m = doses
       .filter((d) => d.vaccineCode === r.vaccineCode && !d.given && !used.has(d.id))
       .sort((a, b) => a.doseNo - b.doseNo)[0];
