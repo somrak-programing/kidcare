@@ -52,7 +52,8 @@ export async function workerFetch<T>(
     }
     let body: { error?: string } & T;
     try {
-      body = (await res.json()) as { error?: string } & T;
+      const parsed: unknown = await res.json();
+      body = (typeof parsed === "object" && parsed !== null ? parsed : {}) as { error?: string } & T;
     } catch {
       if (timedOut) throw msg("timeout", "ใช้เวลานานเกินไป ลองใหม่");
       body = {} as { error?: string } & T;
