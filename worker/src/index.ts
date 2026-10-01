@@ -16,12 +16,14 @@ export interface Deps {
   client: ClaudeLike;
 }
 
+const MAX_BODY_BYTES = 13_000_000;
+
 const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 function corsHeaders(req: Request, env: Env): Record<string, string> {
   const origin = req.headers.get("Origin");
   const h: Record<string, string> = { Vary: "Origin" };
-  if (origin && list(env.ALLOWED_ORIGIN).includes(origin)) {
+  if (origin && list(env.ALLOWED_ORIGIN ?? "").includes(origin)) {
     h["Access-Control-Allow-Origin"] = origin;
     h["Access-Control-Allow-Methods"] = "POST, OPTIONS";
     h["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
@@ -49,10 +51,12 @@ export async function handle(req: Request, env: Env, deps: Deps): Promise<Respon
     }
 
     const auth = req.headers.get("Authorization") ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = /^bearer\s+/i.test(auth) ? auth.replace(/^bearer\s+/i, "").trim() : "";
     if (!token) throw new HttpError(401, "unauthorized");
     const uid = await deps.verify(token);
-    if (!list(env.ALLOWED_UIDS).includes(uid)) throw new HttpError(403, "forbidden");
+    if (!list(env.ALLOWED_UIDS ?? "").includes(uid)) throw new HttpError(403, "forbidden");
+
+    if (Number(req.headers.get("Content-Length") ?? 0) > MAX_BODY_BYTES) throw new HttpError(413, "too_large");
 
     let body: unknown;
     try {
@@ -65,9 +69,15 @@ export async function handle(req: Request, env: Env, deps: Deps): Promise<Respon
     return json(200, { records }, cors);
   } catch (err) {
     if (err instanceof HttpError) return json(err.status, { error: err.code }, cors);
-    if (err instanceof ExtractError) return json(502, { error: err.code }, cors);
+    if (err instanceof ExtractError) {
+      console.warn("extract", err.code);
+      return json(502, { error: err.code }, cors);
+    }
     if (err instanceof Anthropic.RateLimitError) return json(429, { error: "rate_limited" }, cors);
-    if (err instanceof Anthropic.APIError) return json(502, { error: "upstream" }, cors);
+    if (err instanceof Anthropic.APIError) {
+      console.error("upstream", err.status, err.name);
+      return json(502, { error: "upstream" }, cors);
+    }
     console.error("internal error", err instanceof Error ? err.message : "unknown");
     return json(500, { error: "internal" }, cors);
   }

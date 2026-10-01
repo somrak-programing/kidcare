@@ -89,14 +89,14 @@ export function deleteSeries(fid: string, cid: string, seriesId: string, doseIds
   fire(batch.commit(), "ลบไม่สำเร็จ");
 }
 
-export function saveImport(fid: string, cid: string, rows: { target: string; record: ImportedRecord }[]) {
+export function saveImport(fid: string, cid: string, rows: { target: string; record: ImportedRecord; overwrite?: boolean }[]) {
   if (!rows.length) return;
   const batch = writeBatch(db);
   const doseCol = childSub(fid, cid, "vaccineDoses");
 
-  for (const { target, record: r } of rows) {
+  for (const { target, record: r, overwrite } of rows) {
     if (target === "new") continue;
-    batch.update(doc(doseCol, target), {
+    const patch = {
       given: true,
       givenDate: r.dateGiven,
       givenDateUnknown: r.dateGiven === null,
@@ -104,7 +104,10 @@ export function saveImport(fid: string, cid: string, rows: { target: string; rec
       place: r.place ?? undefined,
       source: "import",
       importConfidence: r.confidence,
-    });
+    };
+    // Overwriting an already-given dose: a null lot/place in the import clears the old value.
+    // For not-yet-given doses there is nothing to clear, so the keys stay unset.
+    batch.update(doc(doseCol, target), overwrite ? undefinedKeysToDelete(patch, ["lotNo", "place"]) : patch);
   }
 
   // รายการที่ไม่มีเข็มให้จับคู่ → สร้างชุดใหม่ ต่อวัคซีน 1 ชุด

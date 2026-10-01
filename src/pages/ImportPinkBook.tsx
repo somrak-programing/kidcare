@@ -9,12 +9,13 @@ import { useChild, useDoses } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { formatThaiDate, todayISO } from "@/domain/dates";
 import { findDuplicateTargets, matchImportedDoses, rowWarnings, type ImportRow } from "@/domain/importMatch";
-import { callExtract } from "@/lib/extractClient";
+import { callExtract, ExtractClientError } from "@/lib/extractClient";
 import { resizeToJpegBase64 } from "@/lib/resizeImage";
 import { saveImport } from "@/lib/repo/vaccines";
 import type { VaccineDose } from "@/types";
 
 const MAX_FILES = 6;
+const READ_FILE_ERROR = "อ่านไฟล์รูปไม่ได้ ลองถ่ายใหม่ หรือใช้รูปแบบ JPEG/PNG";
 const selectCls = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm";
 
 type Patch = { target?: string; include?: boolean; dateGiven?: string | null; lotNo?: string | null; place?: string | null };
@@ -97,12 +98,13 @@ export default function ImportPinkBook() {
   const fid = useFamilyId();
   const nav = useNavigate();
   const { data: child, error } = useChild(fid, cid);
-  const { data: doses } = useDoses(fid, cid);
+  const { data: doses, loading: dosesLoading } = useDoses(fid, cid);
   const fileId = useId();
   const [files, setFiles] = useState<File[]>([]);
   const [phase, setPhase] = useState<"pick" | "reading" | "review">("pick");
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const today = todayISO();
 
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -118,12 +120,20 @@ export default function ImportPinkBook() {
     setMsg(null);
     setPhase("reading");
     try {
-      const images = await Promise.all(files.map((f) => resizeToJpegBase64(f)));
+      // sequential: decoding several full-size photos at once can exhaust memory on phones
+      const images: Awaited<ReturnType<typeof resizeToJpegBase64>>[] = [];
+      for (const f of files) {
+        try {
+          images.push(await resizeToJpegBase64(f));
+        } catch {
+          throw new ExtractClientError(READ_FILE_ERROR);
+        }
+      }
       const records = await callExtract(images, child.birthDate);
       setRows(matchImportedDoses(records, doses, child.birthDate, today));
       setPhase("review");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e));
+      setMsg(e instanceof ExtractClientError ? e.message : READ_FILE_ERROR);
       setPhase("pick");
     }
   }
@@ -147,7 +157,11 @@ export default function ImportPinkBook() {
 
   function onSave() {
     const chosen = rows.filter((r) => r.include);
-    saveImport(fid, cid, chosen.map((r) => ({ target: r.target, record: r.record })));
+    saveImport(fid, cid, chosen.map((r) => ({
+      target: r.target,
+      record: r.record,
+      overwrite: doses.find((d) => d.id === r.target)?.given === true,
+    })));
     nav(`/children/${cid}`);
   }
 
@@ -161,20 +175,28 @@ export default function ImportPinkBook() {
       {phase !== "review" && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">ถ่ายรูปหน้าบันทึกวัคซีนให้ชัด เห็นวันที่ครบ ได้สูงสุด {MAX_FILES} รูป รูปจะถูกส่งไปให้ AI อ่านแล้วทิ้ง ไม่ถูกเก็บไว้</p>
-          <Label htmlFor={fileId} className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-sm">
+          <Label htmlFor={fileId} className={`flex items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-sm focus-within:ring-2 focus-within:ring-ring ${phase === "reading" ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
             <Camera size={18} /> เลือก/ถ่ายรูป
           </Label>
-          <input id={fileId} type="file" accept="image/*" multiple className="sr-only"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, MAX_FILES))} />
+          <input id={fileId} type="file" accept="image/*" multiple className="sr-only" disabled={phase === "reading"}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? []);
+              setNote(picked.length > MAX_FILES ? `เลือกได้สูงสุด ${MAX_FILES} รูป — ใช้ ${MAX_FILES} รูปแรก` : null);
+              setFiles(picked.slice(0, MAX_FILES));
+              e.target.value = ""; // allow re-selecting the same file
+            }} />
+          {note && <p role="status" className="text-sm text-muted-foreground">{note}</p>}
           {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {previews.map((u, i) => <img key={u} src={u} alt={`หน้า ${i + 1}`} className="aspect-[3/4] w-full rounded object-cover" />)}
             </div>
           )}
           {msg && <p role="alert" className="text-sm text-destructive">{msg}</p>}
-          <Button type="button" className="w-full" disabled={!files.length || phase === "reading"} onClick={onRead}>
+          {dosesLoading && <p className="text-sm text-muted-foreground">กำลังโหลดข้อมูลวัคซีน…</p>}
+          <Button type="button" className="w-full" disabled={!files.length || phase === "reading" || dosesLoading} onClick={onRead}>
             {phase === "reading" ? <><Loader2 size={16} className="animate-spin" /> กำลังอ่าน… (อาจใช้เวลาเกือบนาที)</> : "อ่านด้วย AI"}
           </Button>
+          {phase === "reading" && <p role="status" aria-live="polite" className="sr-only">กำลังอ่านรูปด้วย AI อาจใช้เวลาเกือบนาที</p>}
         </div>
       )}
 

@@ -59,6 +59,39 @@ describe("handle", () => {
     expect((await handle(noAuth, env, deps())).status).toBe(401);
     expect((await handle(req(), env, deps({ uid: new HttpError(401, "unauthorized") }))).status).toBe(401);
   });
+  test("lowercase bearer scheme is accepted", async () => {
+    const d = deps();
+    const r = await handle(req({ headers: { Authorization: "bearer tok" } }), env, d);
+    expect(r.status).toBe(200);
+    expect(d.verify).toHaveBeenCalledWith("tok");
+  });
+  test("CORS headers present on 401 and 413 responses", async () => {
+    const noAuth = new Request("https://w.example/extract-vaccines", { method: "POST", body, headers: { Origin: "https://kid.web.app" } });
+    const r401 = await handle(noAuth, env, deps());
+    expect(r401.status).toBe(401);
+    expect(r401.headers.get("Access-Control-Allow-Origin")).toBe("https://kid.web.app");
+    expect(r401.headers.get("Vary")).toBe("Origin");
+
+    const many = JSON.stringify({ images: Array.from({ length: 7 }, () => ({ mediaType: "image/jpeg", data: "A" })), birthDate: "2023-07-01" });
+    const r413 = await handle(req({ body: many }), env, deps());
+    expect(r413.status).toBe(413);
+    expect(r413.headers.get("Access-Control-Allow-Origin")).toBe("https://kid.web.app");
+    expect(r413.headers.get("Vary")).toBe("Origin");
+  });
+  test("413 from Content-Length guard before reading body, with CORS", async () => {
+    const d = deps();
+    const r = await handle(req({ headers: { "Content-Length": "13000001" } }), env, d);
+    expect(r.status).toBe(413);
+    expect(await r.json()).toEqual({ error: "too_large" });
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://kid.web.app");
+    expect(r.headers.get("Vary")).toBe("Origin");
+  });
+  test("missing ALLOWED_* bindings do not throw", async () => {
+    const bare = { ANTHROPIC_API_KEY: "k", FIREBASE_PROJECT_ID: "p" } as unknown as Env;
+    const r = await handle(req(), bare, deps());
+    expect(r.status).toBe(403);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
   test("403 when uid not allowed", async () => {
     const r = await handle(req(), env, deps({ uid: "uid-mallory" }));
     expect(r.status).toBe(403);
