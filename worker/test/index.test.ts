@@ -1,14 +1,23 @@
 import { describe, expect, test, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { handle, type Deps, type Env } from "../src/index";
+import { createHmac } from "node:crypto";
+import worker, { handle, TEST_MESSAGE, type Deps, type Env } from "../src/index";
 import { HttpError } from "../src/request";
 import { ExtractError } from "../src/extract";
+import { kvRecipientStore } from "../src/line/recipients";
+import { memoryKV } from "./helpers";
 
 const env: Env = {
   ANTHROPIC_API_KEY: "k",
   FIREBASE_PROJECT_ID: "p",
   ALLOWED_UIDS: "uid-alice, uid-bob",
   ALLOWED_ORIGIN: "https://kid.web.app,http://localhost:5173",
+  LINE_CHANNEL_SECRET: "line-secret",
+  LINE_CHANNEL_TOKEN: "line-token",
+  LINE_ADD_FRIEND_URL: "https://line.me/R/ti/p/@kidcare",
+  FAMILY_ID: "F",
+  GCP_SA_KEY: "{}",
+  LINE_KV: {} as never,
 };
 const body = JSON.stringify({ images: [{ mediaType: "image/jpeg", data: "AAAA" }], birthDate: "2023-07-01" });
 
@@ -36,7 +45,7 @@ const req = (init: RequestInit & { path?: string; origin?: string } = {}) =>
   new Request(`https://w.example${init.path ?? "/extract-vaccines"}`, {
     method: init.method ?? "POST",
     headers: { Origin: init.origin ?? "https://kid.web.app", Authorization: "Bearer t", "Content-Type": "application/json", ...(init.headers ?? {}) },
-    body: init.method === "OPTIONS" || init.method === "GET" ? undefined : (init.body ?? body),
+    body: init.method === "OPTIONS" || init.method === "GET" || init.method === "DELETE" ? undefined : (init.body ?? body),
   });
 
 describe("handle", () => {
@@ -149,5 +158,72 @@ describe("handle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+function lineDeps() {
+  const store = kvRecipientStore(memoryKV());
+  const api = { profile: vi.fn(async () => ({ displayName: "แม่" })), reply: vi.fn(async () => {}), multicast: vi.fn(async () => {}) };
+  return { store, api };
+}
+
+describe("line routes", () => {
+  const followBody = JSON.stringify({ events: [{ type: "follow", replyToken: "rt", source: { type: "user", userId: "U1" } }] });
+  const sign = (b: string) => createHmac("sha256", env.LINE_CHANNEL_SECRET).update(b).digest("base64");
+
+  test("webhook requires a valid signature and needs no Firebase token", async () => {
+    const line = lineDeps();
+    const bad = new Request("https://w.example/line/webhook", { method: "POST", body: followBody, headers: { "x-line-signature": "nope" } });
+    expect((await handle(bad, env, { ...deps(), line })).status).toBe(401);
+    const good = new Request("https://w.example/line/webhook", { method: "POST", body: followBody, headers: { "x-line-signature": sign(followBody) } });
+    expect((await handle(good, env, { ...deps(), line })).status).toBe(200);
+    expect((await line.store.get("U1"))?.status).toBe("pending");
+  });
+
+  test("webhook with a valid signature but non-JSON body is 400 bad_request", async () => {
+    const line = lineDeps();
+    const r = await handle(new Request("https://w.example/line/webhook", { method: "POST", body: "not json", headers: { "x-line-signature": sign("not json") } }), env, { ...deps(), line });
+    expect([r.status, await r.json()]).toEqual([400, { error: "bad_request" }]);
+  });
+
+  test("recipients list / approve / delete require an allowed user", async () => {
+    const line = lineDeps();
+    await line.store.put({ userId: "U1", displayName: "แม่", status: "pending", addedAt: "x" });
+    const r0 = await handle(req({ method: "GET", path: "/line/recipients" }), env, { ...deps({ uid: "uid-mallory" }), line });
+    expect(r0.status).toBe(403);
+
+    const r1 = await handle(req({ method: "GET", path: "/line/recipients" }), env, { ...deps(), line });
+    expect(await r1.json()).toEqual({ recipients: [{ userId: "U1", displayName: "แม่", status: "pending", addedAt: "x" }], addFriendUrl: env.LINE_ADD_FRIEND_URL });
+
+    expect((await handle(req({ path: "/line/recipients/U1/approve", body: "" }), env, { ...deps(), line })).status).toBe(200);
+    expect((await line.store.get("U1"))?.status).toBe("approved");
+    expect((await handle(req({ path: "/line/recipients/U9/approve", body: "" }), env, { ...deps(), line })).status).toBe(404);
+
+    expect((await handle(req({ method: "DELETE", path: "/line/recipients/U1" }), env, { ...deps(), line })).status).toBe(200);
+    expect(await line.store.get("U1")).toBeNull();
+  });
+
+  test("test message goes to approved only; 400 when none", async () => {
+    const line = lineDeps();
+    const r0 = await handle(req({ path: "/line/test", body: "" }), env, { ...deps(), line });
+    expect([r0.status, await r0.json()]).toEqual([400, { error: "no_recipients" }]);
+    await line.store.put({ userId: "U1", displayName: "", status: "approved", addedAt: "x" });
+    await line.store.put({ userId: "U2", displayName: "", status: "pending", addedAt: "x" });
+    const r1 = await handle(req({ path: "/line/test", body: "" }), env, { ...deps(), line });
+    expect(await r1.json()).toEqual({ sent: 1 });
+    expect(line.api.multicast).toHaveBeenCalledWith(["U1"], TEST_MESSAGE);
+  });
+});
+
+describe("scheduled", () => {
+  test("invalid GCP_SA_KEY is logged, not thrown", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p) } as unknown as ExecutionContext;
+    const kv = memoryKV();
+    await worker.scheduled({} as ScheduledController, { ...env, GCP_SA_KEY: "not json", LINE_KV: kv as never }, ctx);
+    await Promise.all(pending);
+    expect(spy).toHaveBeenCalledWith("reminders failed", expect.any(String));
+    spy.mockRestore();
   });
 });

@@ -8,3 +8,12 @@ FIREBASE_PROJECT_ID = "kidcare-2w"
 # uid ของผู้ที่ใช้การอ่านสมุดชมพูได้ (คั่นด้วยจุลภาค) — เพิ่ม uid แฟนหลังจากเขาเข้าครอบครัว
 ALLOWED_UIDS = "TimvUdENjBYUKgWNI8clVVKMrMX2"
 ALLOWED_ORIGIN = "https://kidcare-2w.web.app,https://kidcare-2w.firebaseapp.com,http://localhost:5174"
+FAMILY_ID = "REPLACE_WITH_FAMILY_ID"
+LINE_ADD_FRIEND_URL = "https://line.me/R/ti/p/@REPLACE"
+
+[triggers]
+crons = ["0 0 * * *"] # 07:00 Asia/Bangkok
+
+[[kv_namespaces]]
+binding = "LINE_KV"
+id = "REPLACE_WITH_KV_ID"

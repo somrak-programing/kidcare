@@ -13,11 +13,16 @@ const MULTICAST_MAX = 500;
 
 export function createLineApi(token: string, fetchFn: FetchFn = (i, init) => fetch(i, init)): LineApi {
   async function call(path: string, init: { method: string; body?: unknown }): Promise<Response> {
-    const res = await fetchFn(`${BASE}${path}`, {
-      method: init.method,
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
+    let res: Response;
+    try {
+      res = await fetchFn(`${BASE}${path}`, {
+        method: init.method,
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      });
+    } catch {
+      throw new UpstreamError(`LINE ${path} network error`);
+    }
     if (!res.ok) throw new UpstreamError(`LINE ${path} ${res.status}`);
     return res;
   }

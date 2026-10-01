@@ -78,3 +78,20 @@ describe("loadReminderItems", () => {
     await expect(createFirestoreReader(sa, f).loadReminderItems("F", ["2026-10-02"])).rejects.toBeInstanceOf(UpstreamError);
   });
 });
+
+describe("network failures", () => {
+  test("token fetch rejection becomes UpstreamError", async () => {
+    const f = fakeFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(getAccessToken(sa, f)).rejects.toBeInstanceOf(UpstreamError);
+  });
+
+  test("runQuery fetch rejection becomes UpstreamError", async () => {
+    const f = fakeFetch((url) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      throw new TypeError("fetch failed");
+    });
+    await expect(createFirestoreReader(sa, f).loadReminderItems("F", ["2026-10-02"])).rejects.toBeInstanceOf(UpstreamError);
+  });
+});

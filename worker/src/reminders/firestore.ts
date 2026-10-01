@@ -46,11 +46,16 @@ export async function getAccessToken(sa: ServiceAccount, fetchFn: FetchFn, now: 
     .setIssuedAt(iat)
     .setExpirationTime(iat + 3600)
     .sign(key);
-  const res = await fetchFn(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString(),
-  });
+  let res: Response;
+  try {
+    res = await fetchFn(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString(),
+    });
+  } catch {
+    throw new UpstreamError("google token network error");
+  }
   if (!res.ok) throw new UpstreamError(`google token ${res.status}`);
   return ((await res.json()) as { access_token: string }).access_token;
 }
@@ -64,11 +69,17 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
 
   async function runQuery(parent: string, collectionId: string, where?: object) {
     token ??= getAccessToken(sa, fetchFn);
-    const res = await fetchFn(`${base}/${parent}:runQuery`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${await token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], ...(where ? { where } : {}) } }),
-    });
+    const accessToken = await token;
+    let res: Response;
+    try {
+      res = await fetchFn(`${base}/${parent}:runQuery`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], ...(where ? { where } : {}) } }),
+      });
+    } catch {
+      throw new UpstreamError("firestore network error");
+    }
     if (!res.ok) throw new UpstreamError(`firestore ${res.status}`);
     const rows = (await res.json()) as { document?: { name: string; fields?: Record<string, FsValue> } }[];
     return rows.filter((r) => r.document).map((r) => decodeDoc(r.document!));

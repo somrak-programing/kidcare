@@ -33,3 +33,12 @@ test("non-2xx throws UpstreamError", async () => {
   const f = fakeFetch(() => new Response("no", { status: 429 }));
   await expect(createLineApi("tok", f).multicast(["U1"], "x")).rejects.toBeInstanceOf(UpstreamError);
 });
+
+test("network failure becomes UpstreamError without leaking the request body", async () => {
+  const f = fakeFetch(() => {
+    throw new TypeError("fetch failed");
+  });
+  const err = await createLineApi("tok", f).reply("rt", "secret text").catch((e) => e);
+  expect(err).toBeInstanceOf(UpstreamError);
+  expect(err.message).not.toContain("secret text");
+});
