@@ -1,0 +1,37 @@
+const BKK_OFFSET_MS = 7 * 3600 * 1000;
+const DAY_MS = 24 * 3600 * 1000;
+const WEEKDAYS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
+const MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+export interface ReminderItem {
+  date: string;
+  childName: string;
+  title: string;
+  time?: string;
+  place?: string;
+}
+
+export function bangkokDate(now: Date, addDays = 0): string {
+  return new Date(now.getTime() + BKK_OFFSET_MS + addDays * DAY_MS).toISOString().slice(0, 10);
+}
+
+export function thaiDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${WEEKDAYS[wd]} ${d} ${MONTHS[m - 1]}`;
+}
+
+function section(label: string, date: string, items: ReminderItem[]): string | null {
+  const list = items
+    .filter((i) => i.date === date)
+    .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));
+  if (!list.length) return null;
+  const lines = list.map((i) => `• ${i.childName}: ${i.title}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""}`);
+  return [`${label} (${thaiDay(date)})`, ...lines].join("\n");
+}
+
+export function buildReminderText(items: ReminderItem[], today: string, tomorrow: string): string | null {
+  const parts = [section("วันนี้", today, items), section("พรุ่งนี้", tomorrow, items)].filter((p): p is string => p !== null);
+  if (!parts.length) return null;
+  return `🔔 KidCare — นัดของลูก\n${parts.join("\n\n")}`;
+}
