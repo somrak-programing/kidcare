@@ -18,11 +18,21 @@ export default function Appointments() {
 
   const err = e1 ?? e2 ?? e3;
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">นัดหมายทั้งหมด</h1>
-        <Button asChild size="sm" variant="outline"><Link to="/appointments/new"><CalendarPlus size={14} /> นัดหมอ</Link></Button>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:p-5 shadow-xs">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">ตารางนัดหมายทั้งหมด</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            รวมนัดฉีดวัคซีนและนัดพบแพทย์ของทุกคนในครอบครัว
+          </p>
+        </div>
+        <Button asChild size="sm" className="self-start sm:self-center">
+          <Link to="/appointments/new">
+            <CalendarPlus size={15} className="mr-1.5" /> บันทึกนัดหมอ
+          </Link>
+        </Button>
       </div>
+
       {err ? (
         <ErrorState error={err} />
       ) : childrenLoading || dosesLoading || apptsLoading ? (

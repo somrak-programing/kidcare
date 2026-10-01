@@ -57,10 +57,10 @@ export default function GrowthForm() {
   }
 
   return (
-    <div className="space-y-4 max-w-lg mx-auto">
-      <div>
+    <div className="space-y-5 max-w-xl mx-auto rounded-xl border bg-card p-5 sm:p-6 shadow-xs">
+      <div className="border-b pb-3">
         <h1 className="text-xl font-bold">บันทึกการเจริญเติบโต</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground mt-0.5">
           {child?.nickname || child?.name} (อายุ ณ วันที่วัด: {Math.floor(ageMonths / 12)} ปี {ageMonths % 12} เดือน)
         </p>
       </div>

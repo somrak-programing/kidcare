@@ -189,9 +189,13 @@ export default function ImportPinkBook() {
   const chosenCount = rows.filter((r) => r.include).length;
 
   return (
-    <div className="space-y-4">
-      <Link to={`/children/${cid}`} className="text-sm underline">← {child.nickname || child.name}</Link>
-      <h1 className="text-xl font-bold">นำเข้าวัคซีนจากสมุดชมพู</h1>
+    <div className="space-y-5 max-w-3xl mx-auto rounded-xl border bg-card p-5 sm:p-6 shadow-xs">
+      <div className="border-b pb-3">
+        <Link to={`/children/${cid}`} className="text-xs text-muted-foreground hover:text-foreground">
+          ← กลับหน้า {child.nickname || child.name}
+        </Link>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">นำเข้าวัคซีนจากสมุดชมพู</h1>
+      </div>
       <p role="status" aria-live="polite" className={phase === "reading" ? "sr-only" : "text-sm text-muted-foreground"}>
         {phase === "reading" ? READING_STATUS : phase === "pick" ? note : null}
       </p>

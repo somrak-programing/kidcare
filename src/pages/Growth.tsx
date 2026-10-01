@@ -61,11 +61,11 @@ export default function Growth() {
         </div>
       </div>
 
-      {/* สรุปล่าสุด (น้ำหนัก & ส่วนสูง) */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* สรุปล่าสุด (น้ำหนัก & ส่วนสูง & รอบหัว) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
         {/* น้ำหนัก */}
-        <div className="rounded-xl border p-4 bg-card space-y-1.5">
-          <span className="text-xs text-muted-foreground">น้ำหนักล่าสุด</span>
+        <div className="rounded-xl border p-4 bg-card space-y-1.5 shadow-xs">
+          <span className="text-xs font-medium text-muted-foreground">น้ำหนักล่าสุด</span>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold">{latestWeight?.weightKg ?? "—"}</span>
             <span className="text-xs text-muted-foreground">กก.</span>
@@ -83,8 +83,8 @@ export default function Growth() {
         </div>
 
         {/* ส่วนสูง */}
-        <div className="rounded-xl border p-4 bg-card space-y-1.5">
-          <span className="text-xs text-muted-foreground">ส่วนสูงล่าสุด</span>
+        <div className="rounded-xl border p-4 bg-card space-y-1.5 shadow-xs">
+          <span className="text-xs font-medium text-muted-foreground">ส่วนสูงล่าสุด</span>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold">{latestHeight?.heightCm ?? "—"}</span>
             <span className="text-xs text-muted-foreground">ซม.</span>
@@ -100,54 +100,82 @@ export default function Growth() {
             </div>
           )}
         </div>
+
+        {/* รอบศีรษะ */}
+        <div className="col-span-2 sm:col-span-1 rounded-xl border p-4 bg-card space-y-1.5 shadow-xs">
+          <span className="text-xs font-medium text-muted-foreground">เส้นรอบศีรษะล่าสุด</span>
+          {records.find((r) => r.headCircumferenceCm != null) ? (
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold">
+                  {records.find((r) => r.headCircumferenceCm != null)?.headCircumferenceCm}
+                </span>
+                <span className="text-xs text-muted-foreground">ซม.</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground pt-1">
+                วัดเมื่อ {formatThaiDate(records.find((r) => r.headCircumferenceCm != null)!.date)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground pt-1">—</p>
+          )}
+        </div>
       </div>
 
-      {/* กราฟการเจริญเติบโต */}
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold">กราฟเปรียบเทียบเกณฑ์มาตรฐาน (0-5 ปี)</h2>
-        <GrowthChart records={records} sex={child.sex} />
-      </section>
+      {/* Main Responsive Grid: Chart (Left 7 cols) & History (Right 5 cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* กราฟการเจริญเติบโต */}
+        <section className="lg:col-span-7 rounded-xl border bg-card p-4 sm:p-5 space-y-3 shadow-xs">
+          <h2 className="text-base font-bold">กราฟเปรียบเทียบเกณฑ์มาตรฐาน (0-5 ปี)</h2>
+          <GrowthChart records={records} sex={child.sex} />
+        </section>
 
-      {/* ตารางประวัติ */}
-      <section className="space-y-2 pt-2">
-        <h2 className="text-sm font-semibold">ประวัติการบันทึก ({records.length})</h2>
-
-        {records.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            ยังไม่มีบันทึกการเจริญเติบโต กด "บันทึกการเติบโต" เพื่อเริ่มต้น
+        {/* ตารางประวัติ */}
+        <section className="lg:col-span-5 rounded-xl border bg-card p-4 sm:p-5 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between border-b pb-3">
+            <h2 className="text-base font-bold">ประวัติการบันทึก ({records.length})</h2>
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+              <Link to={`/children/${cid}/growth/new`}>+ เพิ่มบันทึก</Link>
+            </Button>
           </div>
-        ) : (
-          <div className="divide-y rounded-lg border bg-card text-sm">
-            {records.map((r) => (
-              <div key={r.id} className="flex items-center justify-between p-3">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-3">
-                    <span className="font-semibold">{formatThaiDate(r.date)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      (อายุ {Math.floor(r.ageMonths / 12)} ปี {r.ageMonths % 12} ด.)
-                    </span>
+
+          {records.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              ยังไม่มีบันทึกการเจริญเติบโต กด "บันทึกการเติบโต" เพื่อเริ่มต้น
+            </div>
+          ) : (
+            <div className="divide-y rounded-lg border bg-background/50 text-sm max-h-[500px] overflow-y-auto">
+              {records.map((r) => (
+                <div key={r.id} className="flex items-center justify-between p-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs">{formatThaiDate(r.date)}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        ({Math.floor(r.ageMonths / 12)} ปี {r.ageMonths % 12} ด.)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-0.5">
+                      {r.weightKg && <span>น.น.: <strong className="text-foreground">{r.weightKg}</strong> กก.</span>}
+                      {r.heightCm && <span>ส.ส.: <strong className="text-foreground">{r.heightCm}</strong> ซม.</span>}
+                      {r.headCircumferenceCm && <span>รอบหัว: <strong className="text-foreground">{r.headCircumferenceCm}</strong> ซม.</span>}
+                    </div>
+                    {r.notes && <p className="text-[11px] text-muted-foreground">หมายเหตุ: {r.notes}</p>}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {r.weightKg && <span>น้ำหนัก: <strong>{r.weightKg} กก.</strong></span>}
-                    {r.heightCm && <span>ส่วนสูง: <strong>{r.heightCm} ซม.</strong></span>}
-                    {r.headCircumferenceCm && <span>รอบหัว: <strong>{r.headCircumferenceCm} ซม.</strong></span>}
-                  </div>
-                  {r.notes && <p className="text-xs text-muted-foreground">หมายเหตุ: {r.notes}</p>}
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() => confirm("ลบบันทึกนี้?") && deleteGrowthRecord(fid, cid, r.id)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => confirm("ลบบันทึกนี้?") && deleteGrowthRecord(fid, cid, r.id)}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

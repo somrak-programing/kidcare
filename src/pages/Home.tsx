@@ -56,30 +56,77 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
+      {/* Top Stat KPI Tiles */}
       <StatTiles summary={summary} kidsById={kidsById} />
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">ลูก</h2>
-          <Button asChild size="sm" variant="ghost"><Link to="/children/new"><UserPlus size={14} /> เพิ่ม</Link></Button>
+
+      {/* Main Grid: Left 8 cols, Right 4 cols on desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (Children cards + Monthly chart + Age timeline) */}
+        <div className="lg:col-span-8 space-y-6">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">ลูก ({children.length})</h2>
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/children/new">
+                  <UserPlus size={14} className="mr-1" /> เพิ่มข้อมูลลูก
+                </Link>
+              </Button>
+            </div>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {children.map((c) => (
+                <ChildSummaryCard
+                  key={c.id}
+                  fid={fid}
+                  child={c}
+                  today={today}
+                  doses={doses.filter((d) => d.childId === c.id)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <MonthlyChart buckets={buckets} kids={kids} />
+          <AgeTimeline rows={rows} />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {children.map((c) => (
-            <ChildSummaryCard key={c.id} fid={fid} child={c} today={today} doses={doses.filter((d) => d.childId === c.id)} />
-          ))}
+
+        {/* Right Column (Upcoming list & Quick Actions) */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Upcoming Section */}
+          <section className="rounded-xl border bg-card p-4 space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h2 className="font-semibold text-sm">นัดที่รออยู่</h2>
+              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                <Link to="/appointments/new">
+                  <CalendarPlus size={13} className="mr-1" /> นัดหมอ
+                </Link>
+              </Button>
+            </div>
+            <UpcomingList fid={fid} items={pickHomeUpcoming(items, today, PREVIEW_COUNT)} kids={children} />
+            {items.length > PREVIEW_COUNT && (
+              <Button asChild size="sm" variant="link" className="w-full text-xs text-muted-foreground pt-1">
+                <Link to="/appointments">ดูนัดหมายทั้งหมด ({items.length} รายการ)</Link>
+              </Button>
+            )}
+          </section>
+
+          {/* Quick Actions Card */}
+          <section className="rounded-xl border bg-card/60 p-4 space-y-2.5">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">ทางลัดด่วน</h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <Button asChild variant="outline" size="sm" className="h-9 justify-start">
+                <Link to="/children/new">
+                  <UserPlus size={14} className="mr-1.5 text-primary" /> เพิ่มลูก
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="h-9 justify-start">
+                <Link to="/appointments/new">
+                  <CalendarPlus size={14} className="mr-1.5 text-accent" /> นัดหมอ
+                </Link>
+              </Button>
+            </div>
+          </section>
         </div>
-      </section>
-      <MonthlyChart buckets={buckets} kids={kids} />
-      <AgeTimeline rows={rows} />
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">นัดที่รออยู่</h2>
-          <Button asChild size="sm" variant="outline"><Link to="/appointments/new"><CalendarPlus size={14} /> นัดหมอ</Link></Button>
-        </div>
-        <UpcomingList fid={fid} items={pickHomeUpcoming(items, today, PREVIEW_COUNT)} kids={children} />
-        {items.length > PREVIEW_COUNT && (
-          <Button asChild size="sm" variant="link"><Link to="/appointments">ดูทั้งหมด ({items.length})</Link></Button>
-        )}
-      </section>
+      </div>
     </div>
   );
 }

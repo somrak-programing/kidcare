@@ -118,12 +118,12 @@ export default function IllnessForm() {
   }
 
   return (
-    <div className="space-y-4 max-w-lg mx-auto">
-      <div>
+    <div className="space-y-5 max-w-xl mx-auto rounded-xl border bg-card p-5 sm:p-6 shadow-xs">
+      <div className="border-b pb-3">
         <h1 className="text-xl font-bold">
           {editing ? "แก้ไขบันทึกการป่วย" : "บันทึกการเจ็บป่วย"}
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground mt-0.5">
           บันทึกประวัติเพื่อติดตามอาการ และให้หมอดูย้อนหลังได้สะดวก
         </p>
       </div>

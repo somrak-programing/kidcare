@@ -161,10 +161,10 @@ export default function NewSeries() {
   }
 
   return (
-    <div className="space-y-5">
-      <div>
+    <div className="space-y-5 max-w-2xl mx-auto rounded-xl border bg-card p-5 sm:p-6 shadow-xs">
+      <div className="border-b pb-3">
         <h1 className="text-xl font-bold">เพิ่มชุดวัคซีน</h1>
-        <p className="text-sm text-muted-foreground">บันทึกวัคซีนเฉพาะกิจ เช่น พิษสุนัขบ้า หรือวัคซีนเสริม</p>
+        <p className="text-xs text-muted-foreground mt-0.5">บันทึกวัคซีนเฉพาะกิจ เช่น พิษสุนัขบ้า หรือวัคซีนเสริม</p>
       </div>
 
       <div className="space-y-1">

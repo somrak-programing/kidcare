@@ -83,7 +83,7 @@ export default function ChildForm() {
 
   return (
     <form
-      className="space-y-4"
+      className="space-y-4 max-w-xl mx-auto rounded-xl border bg-card p-5 sm:p-6 shadow-xs"
       onSubmit={(e) => {
         e.preventDefault();
         onSave();

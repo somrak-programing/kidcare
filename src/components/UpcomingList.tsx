@@ -28,22 +28,26 @@ export default function UpcomingList({ fid, items, kids, showAll = false }: { fi
     <div className="space-y-4">
       {sections.map(([label, list, border]) =>
         list.length ? (
-          <div key={label} className="space-y-2">
-            <h3 className="text-sm font-semibold">{label}</h3>
-            {list.map((it) => (
-              <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-lg border-l-4 ${border} bg-card p-3`}>
-                <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">
-                  <p className="font-semibold">{who(it.childId)} · {it.title}</p>
-                  <p className="text-muted-foreground">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
-                </Link>
-                <div className="flex flex-wrap gap-1">
-                  <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
-                  {it.kind === "appointment" && (
-                    <Button type="button" variant="ghost" size="sm" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}><Check size={14} /> ไปแล้ว</Button>
-                  )}
+          <div key={label} className="space-y-2.5">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label} ({list.length})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {list.map((it) => (
+                <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-xl border-l-4 ${border} border-t border-r border-b bg-card p-3.5 shadow-xs transition-colors hover:border-primary/40`}>
+                  <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">
+                    <p className="font-semibold text-foreground">{who(it.childId)} · {it.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
+                  </Link>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
+                    {it.kind === "appointment" && (
+                      <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}>
+                        <Check size={14} className="mr-1" /> ไปแล้ว
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         ) : null,
       )}

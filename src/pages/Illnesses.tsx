@@ -58,11 +58,11 @@ export default function Illnesses() {
         </h2>
 
         {active.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
             สุขภาพแข็งแรงดี ไม่มีอาการป่วยที่กำลังดำเนินอยู่ ✨
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {active.map((ill) => (
               <IllnessCard key={ill.id} cid={cid} illness={ill} />
             ))}
@@ -77,7 +77,7 @@ export default function Illnesses() {
             <CheckCircle2 size={16} /> ประวัติที่หายดีแล้ว ({recovered.length})
           </h2>
 
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {recovered.map((ill) => (
               <IllnessCard key={ill.id} cid={cid} illness={ill} />
             ))}

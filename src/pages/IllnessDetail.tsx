@@ -149,184 +149,190 @@ export default function IllnessDetail() {
         )}
       </div>
 
-      {/* 1. อุณหภูมิ & บันทึกไข้ */}
-      <section className="space-y-3 rounded-xl border p-4 bg-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Thermometer className="text-primary" size={18} />
-            <h2 className="font-semibold text-base">บันทึกอุณหภูมิร่างกาย</h2>
+      {/* Main Grid: Left 7 cols (Temperature Chart & Logs), Right 5 cols (Meds & Visits) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left: 1. อุณหภูมิ & บันทึกไข้ */}
+        <section className="lg:col-span-7 space-y-3 rounded-xl border p-4 sm:p-5 bg-card shadow-xs">
+          <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex items-center gap-2">
+              <Thermometer className="text-primary" size={18} />
+              <h2 className="font-bold text-base">บันทึกอุณหภูมิร่างกาย</h2>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setTempDialogOpen(true)}
+              className="flex items-center gap-1.5 h-8 text-xs"
+            >
+              <Plus size={14} /> บันทึกไข้
+            </Button>
           </div>
-          <Button
-            size="sm"
-            onClick={() => setTempDialogOpen(true)}
-            className="flex items-center gap-1"
-          >
-            <Plus size={14} /> บันทึกไข้
-          </Button>
-        </div>
 
-        {/* กราฟอุณหภูมิ */}
-        <TemperatureChart logs={temps} />
+          {/* กราฟอุณหภูมิ */}
+          <TemperatureChart logs={temps} />
 
-        {/* รายการวัดไข้ล่าสุด */}
-        {temps.length > 0 && (
-          <div className="divide-y rounded-lg border text-sm max-h-60 overflow-y-auto">
-            {temps.slice(0, 10).map((t) => {
-              const fever = classifyFever(t.tempCelsius);
-              const dateStr = new Date(t.measuredAt).toLocaleString("th-TH", {
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              });
+          {/* รายการวัดไข้ล่าสุด */}
+          {temps.length > 0 && (
+            <div className="divide-y rounded-lg border text-sm max-h-72 overflow-y-auto">
+              {temps.slice(0, 15).map((t) => {
+                const fever = classifyFever(t.tempCelsius);
+                const dateStr = new Date(t.measuredAt).toLocaleString("th-TH", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
 
-              return (
-                <div key={t.id} className="flex items-center justify-between p-2.5">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-bold text-base ${fever.colorClass}`}>
-                        {t.tempCelsius}°C
-                      </span>
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${fever.badgeClass}`}>
-                        {fever.label}
-                      </span>
-                      {t.gaveAntipyretic && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 border border-purple-500/20 font-medium flex items-center gap-1">
-                          <Pill size={11} /> {t.antipyreticMedName || "ให้ยาลดไข้"} {t.antipyreticDose ? `(${t.antipyreticDose})` : ""}
+                return (
+                  <div key={t.id} className="flex items-center justify-between p-2.5">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold text-base ${fever.colorClass}`}>
+                          {t.tempCelsius}°C
                         </span>
-                      )}
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded border ${fever.badgeClass}`}>
+                          {fever.label}
+                        </span>
+                        {t.gaveAntipyretic && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 border border-purple-500/20 font-medium flex items-center gap-1">
+                            <Pill size={11} /> {t.antipyreticMedName || "ให้ยาลดไข้"} {t.antipyreticDose ? `(${t.antipyreticDose})` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock size={11} /> {dateStr} · {t.method === "ear" ? "หู" : t.method === "armpit" ? "รักแร้" : t.method === "forehead" ? "หน้าผาก" : "ทวารหนัก"}
+                        {t.notes ? ` · ${t.notes}` : ""}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock size={11} /> {dateStr} · {t.method === "ear" ? "หู" : t.method === "armpit" ? "รักแร้" : t.method === "forehead" ? "หน้าผาก" : "ทวารหนัก"}
-                      {t.notes ? ` · ${t.notes}` : ""}
-                    </p>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => confirm("ลบบันทึกอุณหภูมินี้?") && deleteTemperatureLog(fid, cid, t.id)}
+                    >
+                      <Trash2 size={13} />
+                    </Button>
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => confirm("ลบบันทึกอุณหภูมินี้?") && deleteTemperatureLog(fid, cid, t.id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* 2. ยาที่ได้รับ (Medications) */}
-      <section className="space-y-3 rounded-xl border p-4 bg-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Pill className="text-primary" size={18} />
-            <h2 className="font-semibold text-base">ยาที่ได้รับ ({meds.length})</h2>
-          </div>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/children/${cid}/medications/new?illnessId=${illnessId}`}>
-              <Plus size={14} /> เพิ่มยา
-            </Link>
-          </Button>
-        </div>
-
-        {meds.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-2 text-center border border-dashed rounded-lg">
-            ยังไม่มีรายการยาที่บันทึก
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {meds.map((m) => (
-              <div key={m.id} className="rounded-lg border p-3 text-sm space-y-1 bg-muted/10">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-base">{m.name}</p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => confirm(`ลบยา ${m.name}?`) && deleteMedication(fid, cid, m.id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {m.dosage && <span>ปริมาณ: <strong>{m.dosage}</strong></span>}
-                  {m.frequency && <span>วิธีใช้: <strong>{m.frequency}</strong></span>}
-                </div>
-
-                {m.requiresCompletion && (
-                  <span className="inline-block text-[11px] font-semibold text-amber-600 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
-                    ⚠️ ต้องทานติดต่อกันจนหมด (ยาฆ่าเชื้อ)
-                  </span>
-                )}
-                {m.notes && <p className="text-xs text-muted-foreground">หมายเหตุ: {m.notes}</p>}
+        {/* Right: Meds & Visits */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* 2. ยาที่ได้รับ (Medications) */}
+          <section className="space-y-3 rounded-xl border p-4 sm:p-5 bg-card shadow-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Pill className="text-primary" size={18} />
+                <h2 className="font-bold text-base">ยาที่ได้รับ ({meds.length})</h2>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+              <Button asChild size="sm" variant="outline" className="h-8 text-xs">
+                <Link to={`/children/${cid}/medications/new?illnessId=${illnessId}`}>
+                  <Plus size={13} /> เพิ่มยา
+                </Link>
+              </Button>
+            </div>
 
-      {/* 3. การไปพบแพทย์ (Visits) */}
-      <section className="space-y-3 rounded-xl border p-4 bg-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Stethoscope className="text-primary" size={18} />
-            <h2 className="font-semibold text-base">ประวัติพบแพทย์ ({visits.length})</h2>
-          </div>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/children/${cid}/visits/new?illnessId=${illnessId}`}>
-              <Plus size={14} /> บันทึกการไปตรวจ
-            </Link>
-          </Button>
-        </div>
+            {meds.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center border border-dashed rounded-lg">
+                ยังไม่มีรายการยาที่บันทึก
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {meds.map((m) => (
+                  <div key={m.id} className="rounded-lg border p-3 text-sm space-y-1 bg-muted/10">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-sm">{m.name}</p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => confirm(`ลบยา ${m.name}?`) && deleteMedication(fid, cid, m.id)}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
 
-        {visits.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-2 text-center border border-dashed rounded-lg">
-            ยังไม่มีบันทึกการไปพบแพทย์ในรอบการป่วยนี้
-          </p>
-        ) : (
-          <div className="space-y-2.5">
-            {visits.map((v) => (
-              <div key={v.id} className="rounded-lg border p-3.5 text-sm space-y-1.5 bg-muted/10">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold text-base">{v.hospital}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatThaiDate(v.date)} {v.time ? `${v.time} น.` : ""} {v.doctor ? `· ${v.doctor}` : ""}
-                    </p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {m.dosage && <span>ปริมาณ: <strong>{m.dosage}</strong></span>}
+                      {m.frequency && <span>วิธีใช้: <strong>{m.frequency}</strong></span>}
+                    </div>
+
+                    {m.requiresCompletion && (
+                      <span className="inline-block text-[11px] font-semibold text-amber-600 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                        ⚠️ ต้องทานติดต่อกันจนหมด (ยาฆ่าเชื้อ)
+                      </span>
+                    )}
+                    {m.notes && <p className="text-xs text-muted-foreground">หมายเหตุ: {m.notes}</p>}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => confirm("ลบบันทึกการพบแพทย์นี้?") && deleteVisit(fid, cid, v.id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-
-                {v.diagnosis && (
-                  <p className="text-xs">
-                    <span className="font-semibold">ผลตรวจ:</span> {v.diagnosis}
-                  </p>
-                )}
-                {v.advice && (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-semibold">คำแนะนำ:</span> {v.advice}
-                  </p>
-                )}
-                {v.nextApptDate && (
-                  <p className="text-xs text-primary font-medium">
-                    📅 นัดดูอาการซ้ำ: {formatThaiDate(v.nextApptDate)}
-                  </p>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )}
+          </section>
+
+          {/* 3. การไปพบแพทย์ (Visits) */}
+          <section className="space-y-3 rounded-xl border p-4 sm:p-5 bg-card shadow-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Stethoscope className="text-primary" size={18} />
+                <h2 className="font-bold text-base">ประวัติพบแพทย์ ({visits.length})</h2>
+              </div>
+              <Button asChild size="sm" variant="outline" className="h-8 text-xs">
+                <Link to={`/children/${cid}/visits/new?illnessId=${illnessId}`}>
+                  <Plus size={13} /> บันทึกการตรวจ
+                </Link>
+              </Button>
+            </div>
+
+            {visits.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center border border-dashed rounded-lg">
+                ยังไม่มีบันทึกการไปพบแพทย์ในรอบการป่วยนี้
+              </p>
+            ) : (
+              <div className="space-y-2.5 max-h-64 overflow-y-auto">
+                {visits.map((v) => (
+                  <div key={v.id} className="rounded-lg border p-3.5 text-sm space-y-1.5 bg-muted/10">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-sm">{v.hospital}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatThaiDate(v.date)} {v.time ? `${v.time} น.` : ""} {v.doctor ? `· ${v.doctor}` : ""}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => confirm("ลบบันทึกการพบแพทย์นี้?") && deleteVisit(fid, cid, v.id)}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
+
+                    {v.diagnosis && (
+                      <p className="text-xs">
+                        <span className="font-semibold">ผลตรวจ:</span> {v.diagnosis}
+                      </p>
+                    )}
+                    {v.advice && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-semibold">คำแนะนำ:</span> {v.advice}
+                      </p>
+                    )}
+                    {v.nextApptDate && (
+                      <p className="text-xs text-primary font-medium">
+                        📅 นัดดูอาการซ้ำ: {formatThaiDate(v.nextApptDate)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
 
       {/* Modal บันทึกไข้ */}
       <QuickTempDialog
