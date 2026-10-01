@@ -11,6 +11,11 @@ import Home from "@/pages/Home";
 import AppointmentForm from "@/pages/AppointmentForm";
 import Appointments from "@/pages/Appointments";
 import ImportPinkBook from "@/pages/ImportPinkBook";
+import Illnesses from "@/pages/Illnesses";
+import IllnessForm from "@/pages/IllnessForm";
+import IllnessDetail from "@/pages/IllnessDetail";
+import VisitForm from "@/pages/VisitForm";
+import MedicationForm from "@/pages/MedicationForm";
 
 export default function App() {
   return (
@@ -33,6 +38,12 @@ export default function App() {
         <Route path="/children/:id/allergies" element={<Allergies />} />
         <Route path="/children/:id/series/new" element={<NewSeries />} />
         <Route path="/children/:id/import" element={<ImportPinkBook />} />
+        <Route path="/children/:id/illnesses" element={<Illnesses />} />
+        <Route path="/children/:id/illnesses/new" element={<IllnessForm />} />
+        <Route path="/children/:id/illnesses/:illnessId" element={<IllnessDetail />} />
+        <Route path="/children/:id/illnesses/:illnessId/edit" element={<IllnessForm />} />
+        <Route path="/children/:id/visits/new" element={<VisitForm />} />
+        <Route path="/children/:id/medications/new" element={<MedicationForm />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

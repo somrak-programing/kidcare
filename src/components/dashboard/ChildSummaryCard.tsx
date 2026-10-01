@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronRight } from "lucide-react";
-import { useAllergies } from "@/hooks/data";
+import { useAllergies, useIllnesses } from "@/hooks/data";
 import { ageText, formatThaiDate } from "@/domain/dates";
 import { childProgress } from "@/domain/dashboard";
 import type { Child, ISODate, VaccineDose } from "@/types";
@@ -23,6 +23,17 @@ function AllergyBadge({ fid, childId }: { fid: string; childId: string }) {
   return <span className="shrink-0 text-xs text-muted-foreground">ไม่มีประวัติแพ้</span>;
 }
 
+function ActiveIllnessBadge({ fid, childId }: { fid: string; childId: string }) {
+  const { data } = useIllnesses(fid, childId);
+  const active = data.find((i) => i.status === "active");
+  if (!active) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1 rounded bg-rose-500/20 px-1.5 py-0.5 text-xs font-semibold text-rose-400 animate-pulse">
+      ป่วย: {active.name}
+    </span>
+  );
+}
+
 export function ChildSummaryCard({ fid, child, doses, today }: { fid: string; child: Child; doses: VaccineDose[]; today: ISODate }) {
   const p = childProgress(doses, today);
   const segs = [
@@ -38,7 +49,10 @@ export function ChildSummaryCard({ fid, child, doses, today }: { fid: string; ch
           <p className="truncate font-bold">{name}</p>
           <p className="text-sm text-muted-foreground">{ageText(child.birthDate, today)}</p>
         </div>
-        <AllergyBadge fid={fid} childId={child.id} />
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ActiveIllnessBadge fid={fid} childId={child.id} />
+          <AllergyBadge fid={fid} childId={child.id} />
+        </div>
       </div>
       <div className="mt-3 space-y-1">
         <p className="text-xs text-muted-foreground">วัคซีน</p>

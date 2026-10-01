@@ -52,6 +52,8 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title ref={ref} className={cn("text-lg font-bold", className)} {...props} />
 ));
-DialogTitle.displayName = "DialogTitle";
+const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} {...props} />
+);
 
-export { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose };
+export { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose };

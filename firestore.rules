@@ -96,6 +96,18 @@ service cloud.firestore {
             && request.resource.data.familyId == fid
             && request.resource.data.childId == cid;
         }
+        match /illnesses/{id} {
+          allow read, write: if isMember(fid);
+        }
+        match /visits/{id} {
+          allow read, write: if isMember(fid);
+        }
+        match /medications/{id} {
+          allow read, write: if isMember(fid);
+        }
+        match /temperatureLogs/{id} {
+          allow read, write: if isMember(fid);
+        }
       }
     }
 

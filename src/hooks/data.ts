@@ -64,3 +64,38 @@ export function useFamilyDoses(fid: string, childIds: string[]) {
   const loading = childIds.length > 0 && (settled.key !== key || childIds.some((cid) => !settled.ids.has(cid)));
   return { data, error, loading };
 }
+
+// --- Phase 2 Hooks ---
+
+export function useIllnesses(fid: string, cid: string | null) {
+  const r = useCollection<import("@/types").Illness>(
+    cid ? query(childSub(fid, cid, "illnesses"), orderBy("startDate", "desc")) : null,
+    `illnesses/${fid}/${cid ?? "-"}`,
+  );
+  return r;
+}
+
+export function useVisits(fid: string, cid: string | null) {
+  const r = useCollection<import("@/types").Visit>(
+    cid ? query(childSub(fid, cid, "visits"), orderBy("date", "desc")) : null,
+    `visits/${fid}/${cid ?? "-"}`,
+  );
+  return r;
+}
+
+export function useMedications(fid: string, cid: string | null) {
+  const r = useCollection<import("@/types").Medication>(
+    cid ? childSub(fid, cid, "medications") : null,
+    `medications/${fid}/${cid ?? "-"}`,
+  );
+  return r;
+}
+
+export function useTemperatureLogs(fid: string, cid: string | null) {
+  const r = useCollection<import("@/types").TemperatureLog>(
+    cid ? query(childSub(fid, cid, "temperatureLogs"), orderBy("measuredAt", "desc")) : null,
+    `tempLogs/${fid}/${cid ?? "-"}`,
+  );
+  return r;
+}
+

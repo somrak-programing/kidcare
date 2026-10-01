@@ -99,3 +99,77 @@ export interface Appointment {
   done: boolean;
 }
 export type AppointmentInput = Omit<Appointment, "id" | "familyId">;
+
+// --- Phase 2: Illnesses, Visits, Medications, Temperature Logs ---
+
+export type IllnessStatus = "active" | "recovered";
+
+export interface Illness {
+  id: string;
+  familyId: string;
+  childId: string;
+  name: string;
+  startDate: ISODate;
+  endDate?: ISODate | null;
+  symptoms: string[];
+  notes?: string;
+  status: IllnessStatus;
+  createdAt?: Timestamp;
+}
+export type IllnessInput = Omit<Illness, "id" | "familyId">;
+
+export interface Visit {
+  id: string;
+  familyId: string;
+  childId: string;
+  illnessId?: string | null;
+  date: ISODate;
+  time?: string;
+  hospital: string;
+  doctor?: string;
+  diagnosis?: string;
+  advice?: string;
+  nextApptDate?: ISODate;
+  createdAt?: Timestamp;
+}
+export type VisitInput = Omit<Visit, "id" | "familyId">;
+
+export type MedicationType = "fever" | "antibiotic" | "cough_cold" | "allergy" | "other";
+export type MedicationStatus = "active" | "completed" | "discontinued";
+
+export interface Medication {
+  id: string;
+  familyId: string;
+  childId: string;
+  illnessId?: string | null;
+  visitId?: string | null;
+  name: string;
+  type: MedicationType;
+  dosage: string;
+  frequency: string;
+  requiresCompletion: boolean;
+  startDate: ISODate;
+  endDate?: ISODate | null;
+  status: MedicationStatus;
+  notes?: string;
+  createdAt?: Timestamp;
+}
+export type MedicationInput = Omit<Medication, "id" | "familyId">;
+
+export type TempMethod = "ear" | "armpit" | "forehead" | "rectal";
+
+export interface TemperatureLog {
+  id: string;
+  familyId: string;
+  childId: string;
+  illnessId?: string | null;
+  measuredAt: string; // ISO string e.g. "2026-10-01T14:30:00"
+  tempCelsius: number;
+  method: TempMethod;
+  gaveAntipyretic: boolean;
+  antipyreticMedName?: string;
+  antipyreticDose?: string;
+  notes?: string;
+  createdAt?: Timestamp;
+}
+export type TemperatureLogInput = Omit<TemperatureLog, "id" | "familyId">;

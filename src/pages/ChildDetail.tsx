@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { Activity, ChevronRight, Pencil, Thermometer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AllergyBanner from "@/components/AllergyBanner";
 import ErrorState from "@/components/ErrorState";
+import QuickTempDialog from "@/components/QuickTempDialog";
 import VaccineTimeline from "@/components/VaccineTimeline";
 import CalendarButtons from "@/components/CalendarButtons";
-import { useChild, useOpenAppointments } from "@/hooks/data";
+import { useChild, useIllnesses, useOpenAppointments, useTemperatureLogs } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { ageText, formatThaiDate, todayISO } from "@/domain/dates";
 import { calendarName } from "@/domain/names";
@@ -14,10 +16,16 @@ export default function ChildDetail() {
   const { id: cid = "" } = useParams();
   const fid = useFamilyId();
   const { data: child, loading, error } = useChild(fid, cid);
+  const { data: illnesses } = useIllnesses(fid, cid);
+  const { data: tempLogs } = useTemperatureLogs(fid, cid);
+
+  const [tempDialogOpen, setTempDialogOpen] = useState(false);
 
   if (error) return <ErrorState error={error} />;
   if (loading) return <p className="text-muted-foreground">กำลังโหลด…</p>;
   if (!child) return <p>ไม่พบข้อมูล</p>;
+
+  const activeIllness = illnesses.find((i) => i.status === "active");
 
   return (
     <div className="space-y-4">
@@ -32,6 +40,52 @@ export default function ChildDetail() {
           </p>
         </div>
         <Button asChild variant="ghost" size="icon" aria-label="แก้ไข"><Link to={`/children/${cid}/edit`}><Pencil size={16} /></Link></Button>
+      </div>
+
+      {/* กล่องสถานะสุขภาพ / บันทึกการป่วย */}
+      <div className="rounded-lg border p-3.5 space-y-2.5 bg-card">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold flex items-center gap-1.5">
+            <Activity size={16} className="text-primary" /> สุขภาพ & ประวัติเจ็บป่วย
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs flex items-center gap-1"
+              onClick={() => setTempDialogOpen(true)}
+            >
+              <Thermometer size={13} /> บันทึกไข้
+            </Button>
+            <Button asChild size="sm" variant="ghost" className="h-8 text-xs">
+              <Link to={`/children/${cid}/illnesses`}>
+                ประวัติ ({illnesses.length}) <ChevronRight size={13} />
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {activeIllness ? (
+          <Link
+            to={`/children/${cid}/illnesses/${activeIllness.id}`}
+            className="flex items-center justify-between rounded-md border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-700 dark:text-rose-400"
+          >
+            <div className="space-y-0.5">
+              <span className="font-bold flex items-center gap-1">
+                ⚠️ กำลังป่วย: {activeIllness.name}
+              </span>
+              <span className="text-muted-foreground">
+                เริ่ม {formatThaiDate(activeIllness.startDate)}
+                {activeIllness.symptoms?.length ? ` · ${activeIllness.symptoms.join(", ")}` : ""}
+              </span>
+            </div>
+            <span className="font-semibold underline">ดูบันทึก & กราฟไข้</span>
+          </Link>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            ไม่มีอาการป่วยในขณะนี้ แตะ "บันทึกไข้" เพื่อวัดอุณหภูมิด่วนได้ตลอดเวลา
+          </p>
+        )}
       </div>
 
       {(child.hospitals?.length ?? 0) > 0 && (
@@ -51,6 +105,16 @@ export default function ChildDetail() {
         <h2 className="font-semibold">นัดหมาย</h2>
         <ChildAppointments fid={fid} cid={cid} who={calendarName(child)} />
       </section>
+
+      {/* Quick Temp Dialog */}
+      <QuickTempDialog
+        fid={fid}
+        child={child}
+        recentLogs={tempLogs}
+        illnessId={activeIllness?.id}
+        open={tempDialogOpen}
+        onOpenChange={setTempDialogOpen}
+      />
     </div>
   );
 }
