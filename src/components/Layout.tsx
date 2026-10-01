@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Calendar, CalendarPlus, HeartPulse, Home, Settings, WifiOff } from "lucide-react";
+import { BookOpen, Calendar, CalendarPlus, HeartPulse, Home, Settings, WifiOff } from "lucide-react";
 import InviteBanner from "@/components/InviteBanner";
 import { Button } from "@/components/ui/button";
 import { useOnline } from "@/hooks/useOnline";
@@ -17,6 +17,7 @@ export default function Layout() {
   const navLinks = [
     { name: "หน้าหลัก", to: "/", icon: Home, exact: true },
     { name: "นัดหมาย", to: "/appointments", icon: Calendar, exact: false },
+    { name: "คู่มือ", to: "/manual", icon: BookOpen, exact: false },
     { name: "ตั้งค่า", to: "/settings", icon: Settings, exact: false },
   ];
 

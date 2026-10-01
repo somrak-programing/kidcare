@@ -19,6 +19,7 @@ import MedicationForm from "@/pages/MedicationForm";
 import Growth from "@/pages/Growth";
 import GrowthForm from "@/pages/GrowthForm";
 import MedicalReport from "@/pages/MedicalReport";
+import Manual from "@/pages/Manual";
 
 export default function App() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/children/:id/growth" element={<Growth />} />
         <Route path="/children/:id/growth/new" element={<GrowthForm />} />
         <Route path="/children/:id/report" element={<MedicalReport />} />
+        <Route path="/manual" element={<Manual />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

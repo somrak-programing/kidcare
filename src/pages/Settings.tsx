@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,6 +75,23 @@ export default function Settings() {
               <FamilyMembers fid={fid} family={family} />
             </div>
           )}
+
+          {/* Manual Card */}
+          <div className="rounded-xl border bg-card p-4 sm:p-5 space-y-2.5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <BookOpen size={18} className="text-primary" /> คู่มือการใช้งานระบบ
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  สรุปความสามารถทุกฟังก์ชันของ KidCare (ภาษาไทย & English)
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="h-8 text-xs shrink-0 self-start sm:self-center">
+                <Link to="/manual">เปิดอ่านคู่มือ</Link>
+              </Button>
+            </div>
+          </div>
 
           <div className="rounded-xl border bg-card/60 p-4 sm:p-5 space-y-3">
             <h2 className="font-semibold text-sm text-destructive">บัญชีผู้ใช้</h2>
