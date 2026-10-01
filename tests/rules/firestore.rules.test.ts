@@ -86,6 +86,10 @@ describe("families", () => {
   test("unauthenticated cannot create a child", async () => {
     await assertFails(setDoc(doc(env.unauthenticatedContext().firestore(), "families", FID, "children", "c2"), { name: "x" }));
   });
+  test("family id must be alphanumeric: id with underscore is rejected, plain id accepted", async () => {
+    await assertFails(setDoc(doc(as("carol"), "families", "bad_id"), { name: "C", ownerUid: "carol", memberUids: ["carol"] }));
+    await assertSucceeds(setDoc(doc(as("carol"), "families", "goodId1"), { name: "C", ownerUid: "carol", memberUids: ["carol"] }));
+  });
   test("family delete is denied for the owner", async () => {
     await assertFails(deleteDoc(doc(as("alice"), "families", FID)));
   });
@@ -276,6 +280,15 @@ describe("invites: create", () => {
     await seedInvite("zoe@x.com", "fam2");
     await assertSucceeds(create(alice(), "fam1_zoe@x.com", valid()));
   });
+  test("family id containing '_' cannot be used to squat another family's invite id", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "families", "fam1_kid"), { name: "M", ownerUid: "mallory", memberUids: ["mallory"] });
+    });
+    await assertFails(create(asUser("mallory", "m@x.com"), "fam1_kid_zoe@x.com",
+      valid({ familyId: "fam1_kid", familyName: "M", invitedBy: "mallory", inviterEmail: "m@x.com", email: "zoe@x.com" })));
+    // control: the real owner of fam1 can still invite kid_zoe@x.com (same id)
+    await assertSucceeds(create(alice(), "fam1_kid_zoe@x.com", valid({ email: "kid_zoe@x.com" })));
+  });
 });
 
 describe("invites: read, list, delete", () => {
@@ -366,6 +379,15 @@ describe("joining a family by invite", () => {
     await seedInvite("zoe@x.com", "fam2");
     await assertFails(joinBatch({ deleteInvite: inviteId("fam2", "zoe@x.com") }));
   });
+  test("invite whose familyId field points to another family cannot be used to join", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "invites", inviteId(FID, "zoe@x.com")), {
+        familyId: "fam2", familyName: "F2", invitedBy: "carol", inviterEmail: "carol@x.com",
+        email: "zoe@x.com", createdAt: Timestamp.now(),
+      });
+    });
+    await assertFails(joinBatch());
+  });
   test("unverified email or no email claim cannot join", async () => {
     await seedInvite();
     await assertFails(joinBatch({ verified: false }));
@@ -414,6 +436,16 @@ describe("joining a family by invite", () => {
     await assertFails(getDoc(doc(asUser("zoe", "zoe@x.com"), "families", FID, "children", "c1")));
     await assertFails(joinBatch({ deleteInvite: null }));
     await assertFails(updateDoc(doc(asUser("zoe", "zoe@x.com"), "families", FID), joinUpdate()));
+  });
+  test("removed member can rejoin with a NEW valid invite (positive control)", async () => {
+    await seedInvite();
+    await assertSucceeds(joinBatch());
+    await assertSucceeds(updateDoc(doc(asUser("alice", "alice@x.com"), "families", FID),
+      { memberUids: arrayRemove("zoe"), "memberProfiles.zoe": deleteField() }));
+    await assertFails(joinBatch({ deleteInvite: null }));
+    await seedInvite();
+    await assertSucceeds(joinBatch());
+    await assertSucceeds(getDoc(doc(asUser("zoe", "zoe@x.com"), "families", FID, "children", "c1")));
   });
   test("invitee can read nothing in the family before joining", async () => {
     await seedInvite();

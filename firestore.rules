@@ -47,6 +47,7 @@ service cloud.firestore {
 
     match /families/{fid} {
       allow create: if signedIn()
+        && fid.matches('^[A-Za-z0-9]+$')
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.memberUids == [request.auth.uid];
       allow read: if signedIn() && request.auth.uid in resource.data.memberUids;
@@ -117,6 +118,7 @@ service cloud.firestore {
           && d.email.size() <= 254
           && d.email.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$')
           && d.familyId is string
+          && d.familyId.matches('^[A-Za-z0-9]+$')
           && inviteId == d.familyId + "_" + d.email
           && d.createdAt == request.time
           && fam.ownerUid == request.auth.uid
