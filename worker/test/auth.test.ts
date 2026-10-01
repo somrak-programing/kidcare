@@ -39,6 +39,30 @@ describe("verifyFirebaseToken", () => {
   test.each(cases)("401 on %s", async (_name, make) => {
     await expect(verifyFirebaseToken(await make(), { projectId: PROJECT, jwks })).rejects.toMatchObject({ status: 401, code: "unauthorized" });
   });
+  test("401 on RS384 token", async () => {
+    const t = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS384", kid: "k1" })
+      .setSubject("uid-alice")
+      .setAudience(PROJECT)
+      .setIssuer(`https://securetoken.google.com/${PROJECT}`)
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(priv);
+    await expect(verifyFirebaseToken(t, { projectId: PROJECT, jwks })).rejects.toMatchObject({ status: 401 });
+  });
+  test("401 on token without sub", async () => {
+    const t = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "k1" })
+      .setAudience(PROJECT)
+      .setIssuer(`https://securetoken.google.com/${PROJECT}`)
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(priv);
+    await expect(verifyFirebaseToken(t, { projectId: PROJECT, jwks })).rejects.toMatchObject({ status: 401 });
+  });
+  test("401 on empty sub", async () => {
+    await expect(verifyFirebaseToken(await token({ sub: "" }), { projectId: PROJECT, jwks })).rejects.toMatchObject({ status: 401 });
+  });
   test("401 on garbage", async () => {
     await expect(verifyFirebaseToken("not-a-jwt", { projectId: PROJECT, jwks })).rejects.toMatchObject({ status: 401 });
   });
