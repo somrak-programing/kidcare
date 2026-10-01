@@ -30,21 +30,27 @@ export default function LineSettings() {
 
   /** Returns true when the list was loaded successfully. */
   const load = useCallback(async (): Promise<boolean> => {
+    if (!mounted.current) return false;
     setBusy(true);
     setMsg(null);
     let ok = false;
     try {
       const r = await workerFetch<{ recipients: Recipient[]; addFriendUrl: string }>("/line/recipients");
       if (!mounted.current) return false;
-      setRecipients(r.recipients);
-      setAddUrl(r.addFriendUrl);
+      const url = r.addFriendUrl ?? "";
+      setRecipients(r.recipients ?? []);
+      setAddUrl(url);
       ok = true;
-      try {
-        const dataUrl = await QRCode.toDataURL(r.addFriendUrl, { margin: 1, width: 180 });
-        if (mounted.current) setQr(dataUrl);
-      } catch {
-        // QR is a convenience; the "open in LINE" link still works without it.
-        if (mounted.current) setQr("");
+      if (!url) {
+        setQr("");
+      } else {
+        try {
+          const dataUrl = await QRCode.toDataURL(url, { margin: 1, width: 180 });
+          if (mounted.current) setQr(dataUrl);
+        } catch {
+          // QR is a convenience; the "open in LINE" link still works without it.
+          if (mounted.current) setQr("");
+        }
       }
     } catch (e) {
       if (mounted.current) setMsg(errText(e));
@@ -70,6 +76,7 @@ export default function LineSettings() {
       }
       return;
     }
+    if (!mounted.current) return;
     const ok = await load();
     if (ok && done && mounted.current) setMsg(done);
   }
