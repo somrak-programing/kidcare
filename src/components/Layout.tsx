@@ -1,5 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { Settings, WifiOff } from "lucide-react";
+import InviteBanner from "@/components/InviteBanner";
 import { useOnline } from "@/hooks/useOnline";
 
 export default function Layout() {
@@ -18,6 +19,7 @@ export default function Layout() {
         </div>
       </header>
       <main className="space-y-4 px-4 py-4">
+        <InviteBanner />
         <Outlet />
       </main>
     </div>

@@ -3,18 +3,11 @@ import { Navigate } from "react-router-dom";
 import InviteChoice from "@/components/InviteChoice";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { familyCacheKey, useFamilyStore } from "@/hooks/useFamilyId";
+import { familyCacheKey, useFamilyStore, writeFamilyCache } from "@/hooks/useFamilyId";
 import { createFamily, findMyInvites, resolveFamily } from "@/lib/repo/family";
 import type { Invite } from "@/types";
 
-function writeCache(uid: string, id: string | null) {
-  try {
-    if (id) localStorage.setItem(familyCacheKey(uid), id);
-    else localStorage.removeItem(familyCacheKey(uid));
-  } catch {
-    /* private mode / ignore */
-  }
-}
+const writeCache = writeFamilyCache;
 
 export default function RequireFamily({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();

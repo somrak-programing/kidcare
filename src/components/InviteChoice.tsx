@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { User } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isStaleInviteError, JOIN_FAILED_MESSAGE, STALE_INVITE_MESSAGE } from "@/domain/invites";
+import { auth } from "@/lib/firebase";
 import { createFamily, joinFamily } from "@/lib/repo/family";
 import type { Invite } from "@/types";
 
@@ -14,8 +16,25 @@ interface Props {
 
 /** ผู้ใช้ที่ยังไม่มีครอบครัวแต่มีคำเชิญค้างอยู่ — ต้องเลือกเองว่าจะเข้าร่วมหรือสร้างใหม่ (ไม่ auto-join) */
 export default function InviteChoice({ user, invites, onJoin, onCreateOwn }: Props) {
+  const [list, setList] = useState<Invite[]>(invites);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ผู้ใช้เปลี่ยนบัญชีระหว่างรอ -> ไม่ใช้ผลลัพธ์
+  const sameUser = () => auth.currentUser?.uid === user.uid;
+
+  const createOwn = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await createFamily(user);
+      if (sameUser()) onCreateOwn(id);
+    } catch (e) {
+      if (!sameUser()) return;
+      setError(`สร้างครอบครัวไม่สำเร็จ (${(e as { code?: string })?.code ?? String(e)})`);
+      setBusy(false);
+    }
+  };
 
   const join = async (invite: Invite) => {
     if (
@@ -28,20 +47,20 @@ export default function InviteChoice({ user, invites, onJoin, onCreateOwn }: Pro
     setError(null);
     try {
       await joinFamily(user, invite);
-      onJoin(invite.familyId);
+      if (sameUser()) onJoin(invite.familyId);
     } catch (e) {
-      setError(`เข้าร่วมครอบครัวไม่สำเร็จ (${(e as { code?: string })?.code ?? String(e)})`);
-      setBusy(false);
-    }
-  };
-
-  const createOwn = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      onCreateOwn(await createFamily(user));
-    } catch (e) {
-      setError(`สร้างครอบครัวไม่สำเร็จ (${(e as { code?: string })?.code ?? String(e)})`);
+      if (!sameUser()) return;
+      if (isStaleInviteError(e)) {
+        const rest = list.filter((i) => i.id !== invite.id);
+        setList(rest);
+        if (rest.length === 0) {
+          await createOwn();
+          return;
+        }
+        setError(STALE_INVITE_MESSAGE);
+      } else {
+        setError(JOIN_FAILED_MESSAGE);
+      }
       setBusy(false);
     }
   };
@@ -49,7 +68,7 @@ export default function InviteChoice({ user, invites, onJoin, onCreateOwn }: Pro
   return (
     <div className="mx-auto max-w-md space-y-4 p-6">
       <h1 className="text-xl font-semibold">คุณได้รับคำเชิญเข้าครอบครัว</h1>
-      {invites.map((invite) => (
+      {list.map((invite) => (
         <Card key={invite.id}>
           <CardHeader>
             <CardTitle>“{invite.familyName}”</CardTitle>

@@ -18,3 +18,12 @@ export function useFamilyId(): string {
 }
 
 export const familyCacheKey = (uid: string) => `kidcare.familyId.${uid}`;
+
+export function writeFamilyCache(uid: string, id: string | null) {
+  try {
+    if (id) localStorage.setItem(familyCacheKey(uid), id);
+    else localStorage.removeItem(familyCacheKey(uid));
+  } catch {
+    /* private mode / ignore */
+  }
+}

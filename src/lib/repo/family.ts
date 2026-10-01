@@ -52,7 +52,7 @@ async function doResolveFamily(user: User): Promise<string | null> {
 
   try {
     const famSnap = await getDoc(familyDoc(existing));
-    if (famSnap.exists()) {
+    if (famSnap.exists() && user.emailVerified && user.email) {
       const profiles = famSnap.data()?.memberProfiles as Record<string, unknown> | undefined;
       if (!profiles?.[user.uid]) {
         fire(updateDoc(familyDoc(existing), { [`memberProfiles.${user.uid}`]: profileOf(user) }));
@@ -129,13 +129,17 @@ export function renameFamily(fid: string, name: string) {
 
 /** owner เชิญสมาชิกด้วยอีเมล */
 export function inviteMember(fid: string, familyName: string, owner: User, email: string) {
+  if (!owner.email || !owner.emailVerified) {
+    alert("บัญชีนี้ไม่มีอีเมลที่ยืนยันแล้ว เชิญไม่ได้");
+    return;
+  }
   const e = normalizeEmail(email);
   fire(
     setDoc(inviteDoc(fid, e), {
       familyId: fid,
       familyName,
       invitedBy: owner.uid,
-      inviterEmail: normalizeEmail(owner.email!),
+      inviterEmail: normalizeEmail(owner.email),
       email: e,
       createdAt: serverTimestamp(),
     }),

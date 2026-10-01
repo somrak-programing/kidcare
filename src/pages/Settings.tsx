@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import FamilyMembers from "@/components/FamilyMembers";
 import ErrorState from "@/components/ErrorState";
 import { useAuth } from "@/hooks/useAuth";
 import { useDocument } from "@/hooks/useCollection";
@@ -44,11 +45,7 @@ export default function Settings() {
           <Button disabled={!name.trim() || name === family?.name} onClick={() => renameFamily(fid, name.trim())}>บันทึก</Button>
         </div>
       </div>
-      <div className="space-y-1 text-sm">
-        <p className="font-semibold">สมาชิก ({family?.memberUids.length ?? 0})</p>
-        <p className="text-muted-foreground">คุณ: {user?.email}</p>
-        <p className="text-muted-foreground">การเชิญสมาชิกเพิ่มจะมาในเวอร์ชันถัดไป</p>
-      </div>
+      {family && <FamilyMembers fid={fid} family={family} />}
       <Button variant="outline" onClick={onLogout}>ออกจากระบบ</Button>
     </div>
   );
