@@ -1,4 +1,5 @@
 import { collection, doc } from "firebase/firestore";
+import { inviteId } from "@/domain/invites";
 import { db } from "./firebase";
 
 export const familyDoc = (fid: string) => doc(db, "families", fid);
@@ -9,4 +10,5 @@ export const childSub = (fid: string, cid: string, name: "allergies" | "vaccineS
 export const appointmentsCol = (fid: string) => collection(db, "families", fid, "appointments");
 
 export const invitesCol = () => collection(db, "invites");
-export const inviteDoc = (email: string) => doc(db, "invites", email);
+export const inviteDoc = (familyId: string, email: string) => doc(db, "invites", inviteId(familyId, email));
+export const inviteDocById = (id: string) => doc(db, "invites", id);

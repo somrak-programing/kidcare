@@ -3,70 +3,83 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
+  deleteDoc,
   type FirestoreError,
 } from "firebase/firestore";
 import { familyCacheKey } from "@/hooks/useFamilyId";
 import { normalizeEmail } from "@/domain/email";
+import { isInviteActive } from "@/domain/invites";
 import type { Invite } from "@/types";
 import { db } from "../firebase";
 import { fire } from "../fire";
-import { familyDoc, inviteDoc } from "../paths";
+import { familyDoc, inviteDoc, inviteDocById, invitesCol } from "../paths";
 
-const inFlight = new Map<string, Promise<string>>();
+const resolving = new Map<string, Promise<string | null>>();
+const creating = new Map<string, Promise<string>>();
 
-const profileOf = (user: User) => ({ name: user.displayName ?? "", email: user.email ?? "" });
+const emailOf = (user: User): string => normalizeEmail(user.email ?? "");
 
-/** คำเชิญใช้ได้เฉพาะอีเมลที่ยืนยันแล้ว */
-const inviteEmailOf = (user: User): string | null =>
-  user.emailVerified && user.email ? normalizeEmail(user.email) : null;
+/** โปรไฟล์สมาชิก — ต้องตรงกับ firestore.rules (name ≤ 100, email = อีเมลที่ยืนยันแล้ว lowercase) */
+const profileOf = (user: User) => ({
+  name: (user.displayName || emailOf(user)).slice(0, 100),
+  email: emailOf(user),
+});
 
-async function resolveFamily(user: User): Promise<string> {
+function clearFamilyCache(uid: string) {
+  try {
+    localStorage.removeItem(familyCacheKey(uid));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function doResolveFamily(user: User): Promise<string | null> {
   const userRef = doc(db, "users", user.uid);
-
-  // 1) มี familyId อยู่แล้ว -> ตรวจว่ายังเป็นสมาชิกอยู่ (ถูกลบออก = permission-denied)
   const userSnap = await getDoc(userRef);
   const existing = userSnap.exists() ? (userSnap.data().familyId as string | undefined) : undefined;
-  if (existing) {
-    try {
-      const famSnap = await getDoc(familyDoc(existing));
+  if (!existing) return null;
+
+  try {
+    const famSnap = await getDoc(familyDoc(existing));
+    if (famSnap.exists()) {
       const profiles = famSnap.data()?.memberProfiles as Record<string, unknown> | undefined;
       if (!profiles?.[user.uid]) {
         fire(updateDoc(familyDoc(existing), { [`memberProfiles.${user.uid}`]: profileOf(user) }));
       }
-      return existing;
-    } catch (err) {
-      if ((err as FirestoreError)?.code !== "permission-denied") throw err;
-      // ถูกลบออกจากครอบครัวแล้ว -> ล้าง familyId แล้วไปต่อ (รับคำเชิญ/สร้างใหม่)
-      await setDoc(userRef, { familyId: deleteField() }, { merge: true });
     }
+    return existing;
+  } catch (err) {
+    if ((err as FirestoreError)?.code !== "permission-denied") throw err;
+    // ถูกลบออกจากครอบครัวแล้ว -> ล้าง familyId
+    await setDoc(userRef, { familyId: deleteField() }, { merge: true });
+    return null;
   }
+}
 
-  // 2) มีคำเชิญค้างอยู่ -> เข้าร่วมครอบครัวนั้น
-  const email = inviteEmailOf(user);
-  if (email) {
-    let invite: Invite | null = null;
-    try {
-      const inv = await getDoc(inviteDoc(email));
-      if (inv.exists()) invite = { id: inv.id, ...inv.data() } as Invite;
-    } catch {
-      invite = null;
-    }
-    if (invite) {
-      await joinFamily(user, invite.familyId);
-      return invite.familyId;
-    }
-  }
+/** ตรวจว่าผู้ใช้เป็นสมาชิกครอบครัวอยู่แล้วหรือไม่ — คืน familyId หรือ null (ไม่เคยมี / ถูกลบออกแล้ว) */
+export function resolveFamily(user: User): Promise<string | null> {
+  const pending = resolving.get(user.uid);
+  if (pending) return pending;
+  const p = doResolveFamily(user).finally(() => {
+    resolving.delete(user.uid);
+  });
+  resolving.set(user.uid, p);
+  return p;
+}
 
-  // 3) สร้างครอบครัวใหม่ที่มีผู้ใช้เป็น owner
+async function doCreateFamily(user: User): Promise<string> {
+  const userRef = doc(db, "users", user.uid);
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(userRef);
     const current = snap.exists() ? (snap.data().familyId as string | undefined) : undefined;
@@ -85,57 +98,74 @@ async function resolveFamily(user: User): Promise<string> {
   });
 }
 
-/** คืน familyId ของผู้ใช้ — เข้าร่วมตามคำเชิญถ้ามี ไม่เช่นนั้นสร้าง family ใหม่ที่มีผู้ใช้เป็น owner (ต้องออนไลน์ครั้งแรก) */
-export function ensureFamily(user: User): Promise<string> {
-  const pending = inFlight.get(user.uid);
+/** สร้างครอบครัวใหม่ที่มีผู้ใช้เป็น owner (ต้องออนไลน์) — ถ้ามี familyId อยู่แล้วจะคืนอันเดิม */
+export function createFamily(user: User): Promise<string> {
+  const pending = creating.get(user.uid);
   if (pending) return pending;
-  const p = resolveFamily(user).finally(() => {
-    inFlight.delete(user.uid);
+  const p = doCreateFamily(user).finally(() => {
+    creating.delete(user.uid);
   });
-  inFlight.set(user.uid, p);
+  creating.set(user.uid, p);
   return p;
+}
+
+/** คำเชิญที่ยังไม่หมดอายุของผู้ใช้ (ต้องยืนยันอีเมลแล้ว) — ผิดพลาด = ไม่มี */
+export async function findMyInvites(user: User): Promise<Invite[]> {
+  if (!user.emailVerified || !user.email) return [];
+  try {
+    const snap = await getDocs(query(invitesCol(), where("email", "==", normalizeEmail(user.email))));
+    const now = Date.now();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as Invite)
+      .filter((i) => isInviteActive(i.createdAt?.toMillis() ?? null, now));
+  } catch {
+    return [];
+  }
 }
 
 export function renameFamily(fid: string, name: string) {
   fire(updateDoc(familyDoc(fid), { name }));
 }
 
-/** owner เชิญสมาชิกด้วยอีเมล (email ต้องผ่าน normalizeEmail แล้ว) */
-export function inviteMember(fid: string, familyName: string, ownerUid: string, email: string) {
+/** owner เชิญสมาชิกด้วยอีเมล */
+export function inviteMember(fid: string, familyName: string, owner: User, email: string) {
   const e = normalizeEmail(email);
   fire(
-    setDoc(inviteDoc(e), { familyId: fid, familyName, invitedBy: ownerUid, email: e, createdAt: serverTimestamp() }),
+    setDoc(inviteDoc(fid, e), {
+      familyId: fid,
+      familyName,
+      invitedBy: owner.uid,
+      inviterEmail: normalizeEmail(owner.email!),
+      email: e,
+      createdAt: serverTimestamp(),
+    }),
     "เชิญไม่สำเร็จ (อีเมลนี้อาจมีคำเชิญค้างอยู่แล้ว)",
   );
 }
 
-export function cancelInvite(email: string) {
-  fire(deleteDoc(inviteDoc(normalizeEmail(email))));
+export function cancelInvite(invite: Invite) {
+  fire(deleteDoc(inviteDocById(invite.id)));
 }
 
+/** owner เท่านั้น (UI ต้องกันไว้) */
 export function removeMember(fid: string, uid: string) {
   fire(updateDoc(familyDoc(fid), { memberUids: arrayRemove(uid), [`memberProfiles.${uid}`]: deleteField() }));
 }
 
-/** รับคำเชิญ: เพิ่มตัวเองเป็นสมาชิก + ตั้ง familyId + ลบคำเชิญ (atomic) */
-export async function joinFamily(user: User, familyId: string): Promise<void> {
-  const email = inviteEmailOf(user);
-  if (!email) throw new Error("joinFamily requires a verified email");
+/** รับคำเชิญ: เพิ่มตัวเองเป็นสมาชิก + ตั้ง familyId + ลบคำเชิญ (atomic ใน batch เดียว) */
+export async function joinFamily(user: User, invite: Invite): Promise<void> {
+  const profile = profileOf(user);
   const batch = writeBatch(db);
-  batch.update(familyDoc(familyId), {
+  batch.update(familyDoc(invite.familyId), {
     memberUids: arrayUnion(user.uid),
-    [`memberProfiles.${user.uid}`]: profileOf(user),
+    [`memberProfiles.${user.uid}`]: profile,
   });
   batch.set(
     doc(db, "users", user.uid),
-    { familyId, displayName: user.displayName ?? "", email: user.email ?? "" },
+    { familyId: invite.familyId, displayName: user.displayName ?? "", email: user.email ?? "" },
     { merge: true },
   );
-  batch.delete(inviteDoc(email));
+  batch.delete(inviteDocById(invite.id));
   await batch.commit();
-  try {
-    localStorage.removeItem(familyCacheKey(user.uid));
-  } catch {
-    /* ignore */
-  }
+  clearFamilyCache(user.uid);
 }

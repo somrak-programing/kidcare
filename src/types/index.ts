@@ -1,3 +1,5 @@
+import type { Timestamp } from "firebase/firestore";
+
 export type ISODate = string; // "YYYY-MM-DD", Gregorian
 
 export type Sex = "M" | "F";
@@ -16,11 +18,13 @@ export interface Family {
 }
 
 export interface Invite {
-  id: string; // = อีเมล (lowercase)
+  id: string; // = `${familyId}_${emailLower}`
   familyId: string;
   familyName: string;
   invitedBy: string;
+  inviterEmail: string;
   email: string;
+  createdAt?: Timestamp; // undefined/null ขณะ server timestamp ยังไม่ resolve
 }
 
 export interface Child {
