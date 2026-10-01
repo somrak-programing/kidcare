@@ -4,6 +4,7 @@ compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-FIREBASE_PROJECT_ID = "kidcare-xxxx"
-ALLOWED_UIDS = ""
-ALLOWED_ORIGIN = "https://kidcare-xxxx.web.app,http://localhost:5173"
+FIREBASE_PROJECT_ID = "kidcare-2w"
+# uid ของผู้ที่ใช้การอ่านสมุดชมพูได้ (คั่นด้วยจุลภาค) — เพิ่ม uid แฟนหลังจากเขาเข้าครอบครัว
+ALLOWED_UIDS = "TimvUdENjBYUKgWNI8clVVKMrMX2"
+ALLOWED_ORIGIN = "https://kidcare-2w.web.app,https://kidcare-2w.firebaseapp.com,http://localhost:5174"
