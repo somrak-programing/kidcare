@@ -8,16 +8,37 @@ service cloud.firestore {
     }
 
     function verifiedEmail() {
-      return request.auth.token.email_verified == true ? request.auth.token.email.lower() : "";
+      let t = request.auth.token;
+      return t.get('email_verified', false) == true && t.get('email', null) is string
+        ? t.email.lower() : "";
     }
+    function invitePath(fid, email) {
+      return /databases/$(database)/documents/invites/$(fid + "_" + email);
+    }
+    // A profile the caller writes about themself: exactly {name, email}, email = verified email.
+    function validOwnProfile(p) {
+      return p is map
+        && p.keys().hasOnly(['name', 'email'])
+        && verifiedEmail() != ""
+        && p.email == verifiedEmail()
+        && p.name is string && p.name.size() <= 100;
+    }
+    // memberProfiles diff touches only the caller's key; if present afterwards it must be valid.
     function ownProfileOnly() {
-      return request.resource.data.get('memberProfiles', {})
-        .diff(resource.data.get('memberProfiles', {}))
-        .affectedKeys().hasOnly([request.auth.uid]);
+      let after = request.resource.data.get('memberProfiles', {});
+      let before = resource.data.get('memberProfiles', {});
+      return after is map
+        && after.diff(before).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in after) || validOwnProfile(after[request.auth.uid]));
     }
-    function hasInviteFor(fid) {
-      let path = /databases/$(database)/documents/invites/$(verifiedEmail());
-      return verifiedEmail() != "" && exists(path) && get(path).data.familyId == fid;
+    // Joiner holds an unexpired invite for this family and consumes (deletes) it in the same batch.
+    function consumesValidInvite(fid) {
+      let path = invitePath(fid, verifiedEmail());
+      return verifiedEmail() != ""
+        && exists(path)
+        && get(path).data.familyId == fid
+        && get(path).data.createdAt > request.time - duration.value(14, 'd')
+        && !existsAfter(path);
     }
 
     match /users/{uid} {
@@ -36,14 +57,18 @@ service cloud.firestore {
           (request.auth.uid == resource.data.ownerUid
             && request.resource.data.memberUids is list
             && resource.data.ownerUid in request.resource.data.memberUids)
-          // other member: name + own profile only
+          // other member: name (string 1..60) + own profile only
           || (request.auth.uid in resource.data.memberUids
             && request.auth.uid != resource.data.ownerUid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'memberProfiles'])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['name'])
+              || (request.resource.data.name is string
+                && request.resource.data.name.size() >= 1
+                && request.resource.data.name.size() <= 60))
             && ownProfileOnly())
-          // invited user joining: add only self (+ own profile)
+          // invited user joining: add only self (+ own profile), consuming a valid invite
           || (!(request.auth.uid in resource.data.memberUids)
-            && hasInviteFor(fid)
+            && consumesValidInvite(fid)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'memberProfiles'])
             && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
             && ownProfileOnly())
@@ -73,13 +98,33 @@ service cloud.firestore {
       }
     }
 
-    match /invites/{email} {
-      allow read: if signedIn() && (verifiedEmail() == email || resource.data.invitedBy == request.auth.uid);
-      allow create: if signedIn()
-        && request.resource.data.invitedBy == request.auth.uid
-        && request.resource.data.email == email
-        && get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.ownerUid == request.auth.uid;
-      allow delete: if signedIn() && (verifiedEmail() == email || resource.data.invitedBy == request.auth.uid);
+    // Invite id = familyId + "_" + lowercased invitee email.
+    match /invites/{inviteId} {
+      function isInviteeOrInviter() {
+        return signedIn()
+          && (resource.data.email == verifiedEmail() || resource.data.invitedBy == request.auth.uid);
+      }
+      function validNewInvite() {
+        let d = request.resource.data;
+        let fam = get(/databases/$(database)/documents/families/$(d.familyId)).data;
+        return d.keys().hasOnly(['familyId', 'familyName', 'invitedBy', 'inviterEmail', 'email', 'createdAt'])
+          && d.keys().hasAll(['familyId', 'familyName', 'invitedBy', 'inviterEmail', 'email', 'createdAt'])
+          && d.invitedBy == request.auth.uid
+          && verifiedEmail() != ""
+          && d.inviterEmail == verifiedEmail()
+          && d.email is string
+          && d.email == d.email.lower()
+          && d.email.size() <= 254
+          && d.email.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$')
+          && d.familyId is string
+          && inviteId == d.familyId + "_" + d.email
+          && d.createdAt == request.time
+          && fam.ownerUid == request.auth.uid
+          && d.familyName == fam.name;
+      }
+      allow read: if isInviteeOrInviter();
+      allow create: if signedIn() && validNewInvite();
+      allow delete: if isInviteeOrInviter();
       allow update: if false;
     }
   }
