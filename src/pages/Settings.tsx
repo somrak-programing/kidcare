@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import FamilyMembers from "@/components/FamilyMembers";
+import LineSettings from "@/components/LineSettings";
 import ErrorState from "@/components/ErrorState";
 import { useAuth } from "@/hooks/useAuth";
 import { useDocument } from "@/hooks/useCollection";
@@ -46,6 +47,7 @@ export default function Settings() {
         </div>
       </div>
       {family && <FamilyMembers fid={fid} family={family} />}
+      <LineSettings />
       <Button variant="outline" onClick={onLogout}>ออกจากระบบ</Button>
     </div>
   );
