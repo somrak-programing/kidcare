@@ -1424,3 +1424,13 @@ git add -A
 git commit -m "chore(import): tune prompt from real pink-book pages"
 git push
 ```
+
+---
+
+## Addendum (2026-10-01) — adjustments after Plan 1, dashboard and sharing shipped
+
+- EPI dose numbers are not contiguous (OPV 3–5, DTP 4–5; see `src/data/epi.ts`). `matchImportedDoses` pass 1: when no dose of that `vaccineCode` has exactly `doseNo`, fall back to **ordinal** matching — the `doseNo`-th dose of that code when the code's doses are sorted by `doseNo` (e.g. pink-book "OPV ครั้งที่ 1" → EPI OPV dose 3) — if unused; only then fall through to pass 2. Add a test for this.
+- `src/data/vaccineCodes.ts` must equal the worker list; current EPI codes in use: BCG, DTP, DTP-HB-Hib, HB, IPV, JE, MMR, OPV, ROTA (all already in the list).
+- The web env var is `VITE_WORKER_URL` (not `VITE_EXTRACT_URL`).
+- Project conventions since Plan 1: labels with `htmlFor`/`id`, `role="alert"` for errors, `<form onSubmit>`, never color-only status, calendar/LINE text uses nickname or first word of name only.
+- Tasks 5 and 8 need the user (Anthropic key, Cloudflare account, real pink-book photos); Tasks 1–4, 6–7 can be built first.
