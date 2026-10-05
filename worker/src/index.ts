@@ -6,7 +6,7 @@ import { createLineApi, type LineApi } from "./line/api";
 import { kvRecipientStore, type KVLike, type RecipientStore } from "./line/recipients";
 import { verifyLineSignature } from "./line/signature";
 import { handleLineWebhook } from "./line/webhook";
-import { createFirestoreReader, type ServiceAccount } from "./reminders/firestore";
+import { createFirestoreReader, type FirestoreClient, type ServiceAccount } from "./reminders/firestore";
 import { runDailyReminders } from "./reminders/run";
 import { HttpError, parseExtractRequest } from "./request";
 import { UpstreamError } from "./upstream";
@@ -27,6 +27,10 @@ export interface Env {
 export interface LineDeps {
   store: RecipientStore;
   api: LineApi;
+  kv?: KVLike;
+  client?: ClaudeLike;
+  firestore?: FirestoreClient;
+  familyId?: string;
 }
 
 export interface Deps {
@@ -185,16 +189,33 @@ export async function handle(req: Request, env: Env, deps: Deps): Promise<Respon
 
 const jwks = createRemoteJWKSet(new URL(GOOGLE_JWKS_URL));
 
-function lineDeps(env: Env): LineDeps {
-  return { store: kvRecipientStore(env.LINE_KV as unknown as KVLike), api: createLineApi(env.LINE_CHANNEL_TOKEN) };
+function lineDeps(env: Env, client?: ClaudeLike): LineDeps {
+  let firestore: FirestoreClient | undefined;
+  if (env.GCP_SA_KEY) {
+    try {
+      const sa = JSON.parse(env.GCP_SA_KEY) as ServiceAccount;
+      firestore = createFirestoreReader(sa);
+    } catch {
+      // ignore invalid sa
+    }
+  }
+  return {
+    store: kvRecipientStore(env.LINE_KV as unknown as KVLike),
+    api: createLineApi(env.LINE_CHANNEL_TOKEN),
+    kv: env.LINE_KV as unknown as KVLike,
+    client,
+    firestore,
+    familyId: env.FAMILY_ID,
+  };
 }
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) as unknown as ClaudeLike;
     return handle(req, env, {
       verify: (token) => verifyFirebaseToken(token, { projectId: env.FIREBASE_PROJECT_ID, jwks }),
-      client: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) as unknown as ClaudeLike,
-      line: lineDeps(env),
+      client,
+      line: lineDeps(env, client),
     });
   },
 

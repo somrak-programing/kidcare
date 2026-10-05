@@ -106,3 +106,46 @@ describe("network failures", () => {
     await expect(createFirestoreReader(sa, f).loadReminderItems("F", ["2026-10-02"])).rejects.toBeInstanceOf(UpstreamError);
   });
 });
+
+describe("loadChildren and createAppointment", () => {
+  const base = "https://firestore.googleapis.com/v1/projects/p/databases/(default)/documents";
+
+  test("loadChildren maps child records", async () => {
+    const f = fakeFetch((url) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      return json([
+        doc("families/F/children/c1", { name: S("มะลิ ใจดี"), nickname: S("มะลิ") }),
+        doc("families/F/children/c2", { name: S("ต้นกล้า") }),
+      ]);
+    });
+    const children = await createFirestoreReader(sa, f).loadChildren("F");
+    expect(children).toEqual([
+      { id: "c1", name: "มะลิ ใจดี", nickname: "มะลิ" },
+      { id: "c2", name: "ต้นกล้า", nickname: undefined },
+    ]);
+  });
+
+  test("createAppointment POSTs to firestore and returns doc id", async () => {
+    let postedBody: any;
+    const f = fakeFetch((url, init) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      if (url === `${base}/families/F/appointments` && init?.method === "POST") {
+        postedBody = JSON.parse(init.body as string);
+        return json({ name: "projects/p/databases/(default)/documents/families/F/appointments/newApptId" });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const id = await createFirestoreReader(sa, f).createAppointment("F", {
+      childId: "c1",
+      date: "2026-10-07",
+      place: "โรงเรียน",
+      purpose: "วันสุดท้ายของภาคเรียน",
+    });
+
+    expect(id).toBe("newApptId");
+    expect(postedBody.fields.purpose).toEqual({ stringValue: "วันสุดท้ายของภาคเรียน" });
+    expect(postedBody.fields.done).toEqual({ booleanValue: false });
+  });
+});
+

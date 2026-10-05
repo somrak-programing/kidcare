@@ -58,4 +58,152 @@ describe("handleLineWebhook", () => {
     await handleLineWebhook(JSON.stringify({ events: [] }), { store, api: api() });
     expect(await store.list()).toEqual([]);
   });
+
+  test("text message from unapproved user replies with rejection", async () => {
+    const store = kvRecipientStore(memoryKV());
+    await store.put({ userId: "U1", displayName: "", status: "pending", addedAt: "x" });
+    const a = api();
+    await handleLineWebhook(
+      JSON.stringify({ events: [{ type: "message", replyToken: "rt", message: { type: "text", text: "วันเปิดเทอม" }, source: { type: "user", userId: "U1" } }] }),
+      { store, api: a },
+    );
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("ยังไม่ได้รับอนุมัติ"));
+  });
+
+  test("forwarded text message extracts events and replies with quick reply buttons", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    const mockClaude = {
+      beta: {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            stop_reason: "end_turn",
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                events: [
+                  { title: "วันสุดท้ายของภาคเรียน", date: "2026-10-07", time: null, place: "โรงเรียน", notes: null },
+                  { title: "เปิดเทอมภาคเรียนที่ 2", date: "2026-10-29", time: null, place: "โรงเรียน", notes: null },
+                ],
+              }),
+            }],
+          }),
+        },
+      },
+    };
+
+    const mockFirestore = {
+      loadReminderItems: vi.fn(),
+      loadChildren: vi.fn().mockResolvedValue([{ id: "c1", name: "มะลิ", nickname: "มะลิ" }]),
+      createAppointment: vi.fn(),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "message",
+          replyToken: "rt",
+          message: { type: "text", text: "เด็กๆ มาโรงเรียนวันสุดท้ายพุธ 7 ต.ค. และเปิดเทอม 29 ต.ค." },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, client: mockClaude as any, firestore: mockFirestore as any, familyId: "fam1" },
+    );
+
+    expect(a.reply).toHaveBeenCalledWith(
+      "rt",
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("ตรวจพบ 2 กิจกรรม"),
+        quickReply: expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              action: expect.objectContaining({
+                type: "postback",
+                label: "✅ บันทึกให้มะลิ",
+                data: expect.stringMatching(/action=confirm&id=\w+&childId=c1/),
+              }),
+            }),
+            expect.objectContaining({
+              action: expect.objectContaining({
+                type: "postback",
+                label: "❌ ยกเลิก",
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  test("postback confirm creates appointment in firestore and confirms to user", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    // Store sample draft
+    await kv.put("draft:d123", JSON.stringify({
+      events: [{ title: "เปิดเทอม", date: "2026-10-29", time: null, place: "โรงเรียน", notes: null }],
+      familyId: "fam1",
+      createdAt: "x",
+    }));
+
+    const mockFirestore = {
+      loadReminderItems: vi.fn(),
+      loadChildren: vi.fn().mockResolvedValue([{ id: "c1", name: "มะลิ" }]),
+      createAppointment: vi.fn().mockResolvedValue("newApptId"),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "postback",
+          replyToken: "rt",
+          postback: { data: "action=confirm&id=d123&childId=c1" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1" },
+    );
+
+    expect(mockFirestore.createAppointment).toHaveBeenCalledWith("fam1", {
+      childId: "c1",
+      date: "2026-10-29",
+      time: null,
+      place: "โรงเรียน",
+      purpose: "เปิดเทอม",
+      notes: null,
+    });
+    expect(await kv.get("draft:d123")).toBeNull();
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมายเรียบร้อยแล้ว"));
+  });
+
+  test("postback cancel deletes draft and confirms cancelation", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    await kv.put("draft:d999", "some draft");
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "postback",
+          replyToken: "rt",
+          postback: { data: "action=cancel&id=d999" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, familyId: "fam1" },
+    );
+
+    expect(await kv.get("draft:d999")).toBeNull();
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("ยกเลิกการบันทึก"));
+  });
 });
+

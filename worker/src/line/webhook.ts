@@ -1,24 +1,50 @@
-import type { LineApi } from "./api";
-import type { RecipientStore } from "./recipients";
+import type { ClaudeLike } from "../extract";
+import { extractEvents } from "../events/extract";
+import type { ExtractedEvent } from "../events/schema";
+import type { FirestoreClient } from "../reminders/firestore";
+import { thaiDay } from "../reminders/message";
+import type { LineApi, LineQuickReplyItem } from "./api";
+import type { KVLike, RecipientStore } from "./recipients";
 
 export const REPLY_PENDING = "ขอบคุณที่เพิ่มเพื่อน KidCare 🙏 รอผู้ดูแลกดอนุมัติในแอปก่อน แล้วจะเริ่มได้รับแจ้งเตือนนัดของลูกทุกเช้า 7 โมง";
 export const REPLY_WELCOME_BACK = "ยินดีต้อนรับกลับ จะได้รับแจ้งเตือนนัดของลูกตามเดิม";
+export const REPLY_NOT_APPROVED = "ขออภัยครับ บัญชี LINE นี้ยังไม่ได้รับอนุมัติในระบบ KidCare กรุณาให้ผู้ดูแลกดยืนยันในแอปก่อนนะครับ 🙏";
+export const REPLY_NO_EVENTS = "ไม่พบวันนัดหมายหรือกิจกรรมในข้อความนี้ครับ 💬\n(สามารถส่งต่อข้อความแจ้งเตือน เช่น วันเปิดเทอม, กิจกรรมโรงเรียน, วันสอบ, หรือนัดหมอ มาได้เลยครับ)";
+export const REPLY_DRAFT_EXPIRED = "ขออภัยครับ รายการนี้หมดอายุแล้ว (เกิน 10 นาที) กรุณาส่งข้อความใหม่อีกครั้งนะครับ";
+export const REPLY_CANCELLED = "ยกเลิกการบันทึกเรียบร้อยครับ 👌";
+
+export interface DraftEvents {
+  events: ExtractedEvent[];
+  familyId: string;
+  createdAt: string;
+}
 
 interface LineEvent {
   type: string;
   replyToken?: string;
   source?: { type: string; userId?: string };
+  message?: { type: string; text?: string };
+  postback?: { data?: string };
 }
 
-export async function handleLineWebhook(
-  body: string,
-  deps: { store: RecipientStore; api: LineApi; now?: () => Date },
-): Promise<void> {
+export interface WebhookDeps {
+  store: RecipientStore;
+  api: LineApi;
+  kv?: KVLike;
+  client?: ClaudeLike;
+  firestore?: FirestoreClient;
+  familyId?: string;
+  now?: () => Date;
+}
+
+export async function handleLineWebhook(body: string, deps: WebhookDeps): Promise<void> {
   const payload = JSON.parse(body) as { events?: LineEvent[] };
   const now = deps.now ?? (() => new Date());
+
   for (const ev of payload.events ?? []) {
     const userId = ev.source?.type === "user" ? ev.source.userId : undefined;
     if (!userId) continue;
+
     if (ev.type === "follow") {
       const existing = await deps.store.get(userId);
       if (!existing) {
@@ -33,8 +59,223 @@ export async function handleLineWebhook(
           console.error("line reply failed");
         });
       }
-    } else if (ev.type === "unfollow") {
+      continue;
+    }
+
+    if (ev.type === "unfollow") {
       await deps.store.delete(userId);
+      continue;
+    }
+
+    if (ev.type === "message" && ev.message?.type === "text") {
+      const user = await deps.store.get(userId);
+      if (!user || user.status !== "approved") {
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, REPLY_NOT_APPROVED).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
+      if (!deps.client || !deps.kv || !deps.firestore || !deps.familyId) {
+        continue;
+      }
+
+      const text = ev.message?.text?.trim() ?? "";
+      if (!text || text.length > 5000) {
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, REPLY_NO_EVENTS).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
+      let events: ExtractedEvent[] = [];
+      try {
+        events = await extractEvents(deps.client, text, now().toISOString().slice(0, 10));
+      } catch (err) {
+        console.error("event extraction failed", err instanceof Error ? err.name : "unknown");
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการวิเคราะห์ข้อความ กรุณาลองใหม่อีกครั้งครับ").catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
+      if (!events.length) {
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, REPLY_NO_EVENTS).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
+      const draftId = crypto.randomUUID().slice(0, 8);
+      await deps.kv.put(
+        `draft:${draftId}`,
+        JSON.stringify({ events, familyId: deps.familyId, createdAt: now().toISOString() }),
+        { expirationTtl: 600 },
+      );
+
+      const children = await deps.firestore.loadChildren(deps.familyId).catch(() => []);
+
+      const eventLines = events.map((e, idx) => {
+        const dateStr = thaiDay(e.date);
+        const timeStr = e.time ? ` เวลา ${e.time} น.` : "";
+        const placeStr = e.place ? ` (${e.place})` : "";
+        return `${idx + 1}. ${e.title}\n🗓️ ${dateStr}${timeStr}${placeStr}`;
+      });
+
+      const header = `📅 ตรวจพบ ${events.length} กิจกรรมจากข้อความ:\n\n${eventLines.join("\n\n")}`;
+      const items: LineQuickReplyItem[] = [];
+
+      if (children.length === 1) {
+        const child = children[0];
+        const name = child.nickname || child.name || "ลูก";
+        items.push({
+          type: "action",
+          action: {
+            type: "postback",
+            label: `✅ บันทึกให้${name}`.slice(0, 20),
+            data: `action=confirm&id=${draftId}&childId=${child.id}`,
+            displayText: `ยืนยันบันทึกให้${name}`,
+          },
+        });
+      } else if (children.length > 1) {
+        for (const child of children) {
+          const name = child.nickname || child.name;
+          items.push({
+            type: "action",
+            action: {
+              type: "postback",
+              label: `บันทึกให้${name}`.slice(0, 20),
+              data: `action=confirm&id=${draftId}&childId=${child.id}`,
+              displayText: `บันทึกให้${name}`,
+            },
+          });
+        }
+        items.push({
+          type: "action",
+          action: {
+            type: "postback",
+            label: "👨‍👩‍👧‍👦 ให้เด็กทุกคน",
+            data: `action=confirm&id=${draftId}&childId=all`,
+            displayText: "บันทึกให้เด็กทุกคน",
+          },
+        });
+      } else {
+        items.push({
+          type: "action",
+          action: {
+            type: "postback",
+            label: "✅ บันทึกนัดหมาย",
+            data: `action=confirm&id=${draftId}&childId=`,
+            displayText: "ยืนยันบันทึก",
+          },
+        });
+      }
+
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: "❌ ยกเลิก",
+          data: `action=cancel&id=${draftId}`,
+          displayText: "ยกเลิก",
+        },
+      });
+
+      const question = children.length > 1 ? "\n\nต้องการบันทึกให้น้องคนไหนดีครับ?" : "\n\nต้องการบันทึกเข้านัดหมายเลยไหมครับ?";
+
+      if (ev.replyToken) {
+        await deps.api.reply(ev.replyToken, {
+          type: "text",
+          text: header + question,
+          quickReply: { items },
+        }).catch(() => {
+          console.error("line reply failed");
+        });
+      }
+      continue;
+    }
+
+    if (ev.type === "postback" && ev.postback?.data) {
+      const params = new URLSearchParams(ev.postback.data);
+      const action = params.get("action");
+      const draftId = params.get("id");
+      const targetChildId = params.get("childId");
+
+      if (!draftId || !deps.kv) continue;
+
+      if (action === "cancel") {
+        await deps.kv.delete(`draft:${draftId}`);
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, REPLY_CANCELLED).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
+      if (action === "confirm") {
+        const raw = await deps.kv.get(`draft:${draftId}`);
+        if (!raw) {
+          if (ev.replyToken) {
+            await deps.api.reply(ev.replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
+              console.error("line reply failed");
+            });
+          }
+          continue;
+        }
+
+        let draft: DraftEvents;
+        try {
+          draft = JSON.parse(raw);
+        } catch {
+          await deps.kv.delete(`draft:${draftId}`);
+          continue;
+        }
+
+        if (!deps.firestore) continue;
+
+        const children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
+        const childrenToAssign =
+          targetChildId === "all"
+            ? children.map((c) => c.id)
+            : targetChildId
+              ? [targetChildId]
+              : children.length
+                ? [children[0].id]
+                : [""];
+
+        for (const cId of childrenToAssign) {
+          for (const event of draft.events) {
+            await deps.firestore.createAppointment(draft.familyId, {
+              childId: cId,
+              date: event.date,
+              time: event.time,
+              place: event.place,
+              purpose: event.title,
+              notes: event.notes,
+            });
+          }
+        }
+
+        await deps.kv.delete(`draft:${draftId}`);
+
+        const summaryLines = draft.events.map((e) => `• ${e.title} (${thaiDay(e.date)})`);
+        const successMsg = `✅ บันทึกนัดหมายเรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ`;
+
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, successMsg).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+      }
     }
   }
 }

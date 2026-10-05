@@ -2,9 +2,29 @@ import { UpstreamError } from "../upstream";
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
+export interface LineQuickReplyItem {
+  type: "action";
+  action: {
+    type: "postback";
+    label: string;
+    data: string;
+    displayText?: string;
+  };
+}
+
+export type LineMessage =
+  | string
+  | {
+      type: "text";
+      text: string;
+      quickReply?: {
+        items: LineQuickReplyItem[];
+      };
+    };
+
 export interface LineApi {
   profile(userId: string): Promise<{ displayName: string }>;
-  reply(replyToken: string, text: string): Promise<void>;
+  reply(replyToken: string, message: LineMessage): Promise<void>;
   multicast(to: string[], text: string): Promise<void>;
 }
 
@@ -32,8 +52,9 @@ export function createLineApi(token: string, fetchFn: FetchFn = (i, init) => fet
       const j = (await res.json()) as { displayName?: string };
       return { displayName: j.displayName ?? "" };
     },
-    async reply(replyToken, text) {
-      await call("/message/reply", { method: "POST", body: { replyToken, messages: [{ type: "text", text }] } });
+    async reply(replyToken, message) {
+      const msgObj = typeof message === "string" ? { type: "text", text: message } : message;
+      await call("/message/reply", { method: "POST", body: { replyToken, messages: [msgObj] } });
     },
     async multicast(to, text) {
       for (let i = 0; i < to.length; i += MULTICAST_MAX) {

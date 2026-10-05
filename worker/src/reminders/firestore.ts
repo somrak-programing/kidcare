@@ -115,5 +115,50 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       }
       return items;
     },
+
+    async loadChildren(familyId: string): Promise<Array<{ id: string; name: string; nickname?: string }>> {
+      const fam = `families/${familyId}`;
+      const children = await runQuery(fam, "children");
+      return children.map((c) => ({
+        id: c.id,
+        name: str(c.name) ?? "",
+        nickname: str(c.nickname),
+      }));
+    },
+
+    async createAppointment(
+      familyId: string,
+      data: { childId: string; date: string; time?: string | null; place?: string | null; purpose: string; notes?: string | null },
+    ): Promise<string> {
+      token ??= getAccessToken(sa, fetchFn);
+      const accessToken = await token;
+      const fields: Record<string, FsValue> = {
+        familyId: { stringValue: familyId },
+        childId: { stringValue: data.childId },
+        date: { stringValue: data.date },
+        place: { stringValue: data.place || "โรงเรียน" },
+        purpose: { stringValue: data.purpose },
+        done: { booleanValue: false },
+      };
+      if (data.time) fields.time = { stringValue: data.time };
+      if (data.notes) fields.notes = { stringValue: data.notes };
+
+      let res: Response;
+      try {
+        res = await fetchFn(`${base}/families/${familyId}/appointments`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ fields }),
+        });
+      } catch {
+        throw new UpstreamError("firestore network error");
+      }
+      if (!res.ok) throw new UpstreamError(`firestore ${res.status}`);
+      const json = (await res.json()) as { name: string };
+      return json.name.split("/").pop()!;
+    },
   };
 }
+
+export type FirestoreClient = ReturnType<typeof createFirestoreReader>;
+
