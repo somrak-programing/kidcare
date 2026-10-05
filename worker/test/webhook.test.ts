@@ -179,7 +179,7 @@ describe("handleLineWebhook", () => {
       notes: null,
     });
     expect(await kv.get("draft:d123")).toBeNull();
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมายเรียบร้อยแล้ว"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมาย"));
   });
 
   test("postback cancel deletes draft and confirms cancelation", async () => {

@@ -179,6 +179,26 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         });
       }
 
+      // Option for Dad and Mom
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: "👨 บันทึกให้พ่อ",
+          data: `action=confirm&id=${draftId}&childId=parent:dad`,
+          displayText: "บันทึกให้พ่อ",
+        },
+      });
+      items.push({
+        type: "action",
+        action: {
+          type: "postback",
+          label: "👩 บันทึกให้แม่",
+          data: `action=confirm&id=${draftId}&childId=parent:mom`,
+          displayText: "บันทึกให้แม่",
+        },
+      });
+
       items.push({
         type: "action",
         action: {
@@ -189,7 +209,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         },
       });
 
-      const question = children.length > 1 ? "\n\nต้องการบันทึกให้น้องคนไหนดีครับ?" : "\n\nต้องการบันทึกเข้านัดหมายเลยไหมครับ?";
+      const question = "\n\nต้องการบันทึกให้น้องคนไหน หรือคุณพ่อ/คุณแม่ดีครับ?";
 
       if (ev.replyToken) {
         await deps.api.reply(ev.replyToken, {
@@ -267,8 +287,17 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
 
         await deps.kv.delete(`draft:${draftId}`);
 
+        let targetLabel = "";
+        if (targetChildId === "parent:dad") targetLabel = "ของคุณพ่อ ";
+        else if (targetChildId === "parent:mom") targetLabel = "ของคุณแม่ ";
+        else if (targetChildId === "all") targetLabel = "ของทุกคน ";
+        else if (targetChildId) {
+          const matched = children.find((c) => c.id === targetChildId);
+          if (matched) targetLabel = `ของน้อง${matched.nickname || matched.name} `;
+        }
+
         const summaryLines = draft.events.map((e) => `• ${e.title} (${thaiDay(e.date)})`);
-        const successMsg = `✅ บันทึกนัดหมายเรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ`;
+        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ`;
 
         if (ev.replyToken) {
           await deps.api.reply(ev.replyToken, successMsg).catch(() => {

@@ -28,7 +28,7 @@ export const allergySchema = z.object({
 });
 
 export const appointmentSchema = z.object({
-  childId: z.string().min(1, "กรุณาเลือกลูก"),
+  childId: z.string().min(1, "กรุณาเลือกผู้รับนัดหมาย"),
   date: isoDate,
   time: z.string().regex(/^\d{2}:\d{2}$/, "รูปแบบเวลาไม่ถูกต้อง").optional(),
   place: z.string().trim().min(1, "กรุณาใส่สถานที่"),

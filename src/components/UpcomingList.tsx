@@ -23,10 +23,16 @@ export default function UpcomingList({
 }) {
   const g = groupUpcoming(items, todayISO());
   const who = (cid: string) => {
+    if (cid === "parent:dad" || cid === "dad") return "👨 คุณพ่อ";
+    if (cid === "parent:mom" || cid === "mom") return "👩 คุณแม่";
+    if (cid === "family") return "🏠 ครอบครัว";
     const c = kids.find((x) => x.id === cid);
     return c ? c.nickname || c.name || "ไม่ระบุ" : "ไม่ระบุ";
   };
   const calWho = (cid: string) => {
+    if (cid === "parent:dad" || cid === "dad") return "คุณพ่อ";
+    if (cid === "parent:mom" || cid === "mom") return "คุณแม่";
+    if (cid === "family") return "ครอบครัว";
     const c = kids.find((x) => x.id === cid);
     return (c && calendarName(c)) || "ไม่ระบุ";
   };

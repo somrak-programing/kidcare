@@ -108,7 +108,15 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       for (const a of appts) {
         const date = str(a.date);
         if (!date || !dates.includes(date)) continue;
-        const item: ReminderItem = { date, childName: nameOf.get(String(a.childId)) ?? "", title: String(a.purpose ?? "") };
+        const cId = String(a.childId ?? "");
+        let personName = nameOf.get(cId);
+        if (!personName) {
+          if (cId === "parent:dad" || cId === "dad") personName = "คุณพ่อ";
+          else if (cId === "parent:mom" || cId === "mom") personName = "คุณแม่";
+          else if (cId === "family") personName = "ครอบครัว";
+          else personName = "";
+        }
+        const item: ReminderItem = { date, childName: personName, title: String(a.purpose ?? "") };
         if (str(a.time)) item.time = str(a.time);
         if (str(a.place)) item.place = str(a.place);
         items.push(item);

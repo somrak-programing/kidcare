@@ -15,8 +15,8 @@ import type { Appointment } from "@/types";
 
 const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
 
-// ปลายทางเมื่อบันทึก/ยกเลิก: หน้าลูกที่เกี่ยวข้อง ไม่มีก็กลับหน้าแรก
-const backTo = (cid: string) => (cid ? `/children/${cid}` : "/");
+// ปลายทางเมื่อบันทึก/ยกเลิก: หน้าลูกที่เกี่ยวข้อง หรือหน้ารวมนัดหมาย
+const backTo = (cid: string) => (cid && !cid.startsWith("parent:") && cid !== "family" ? `/children/${cid}` : "/appointments");
 
 export default function AppointmentForm() {
   const { apptId } = useParams();
@@ -40,8 +40,10 @@ export default function AppointmentForm() {
   const prefilledId = useRef<string | null>(null);
 
   useEffect(() => {
-    // ?child= ที่ไม่ตรงกับเด็กที่มีอยู่ → ล้างค่า (หลังโหลดเด็กเสร็จเท่านั้น)
-    if (childrenLoading || apptId || !childId || children.some((c) => c.id === childId)) return;
+    // ?child= ที่ไม่ตรงกับเด็กที่มีอยู่ หรือไม่ใช่ผู้ปกครอง → ล้างค่า (หลังโหลดเด็กเสร็จเท่านั้น)
+    if (childrenLoading || apptId || !childId) return;
+    if (childId.startsWith("parent:") || childId === "family") return;
+    if (children.some((c) => c.id === childId)) return;
     setChildId("");
   }, [children, childrenLoading, childId, apptId]);
 
@@ -86,10 +88,23 @@ export default function AppointmentForm() {
     >
       <h1 className="text-xl font-bold">{apptId ? "แก้ไขนัด" : "เพิ่มนัดหมอ"}</h1>
       <div className="space-y-1">
-        <Label htmlFor={`${uid}-child`}>ลูก</Label>
+        <Label htmlFor={`${uid}-child`}>นัดหมายของใคร</Label>
         <select id={`${uid}-child`} className={selectCls} value={childId} onChange={(e) => setChildId(e.target.value)}>
-          <option value="">เลือก…</option>
-          {children.map((c) => <option key={c.id} value={c.id}>{c.nickname || c.name}</option>)}
+          <option value="">เลือกผู้รับนัดหมาย…</option>
+          {children.length > 0 && (
+            <optgroup label="เด็กในครอบครัว">
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  👧 {c.nickname ? `${c.nickname} (${c.name})` : c.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="ผู้ปกครอง / ครอบครัว">
+            <option value="parent:dad">👨 คุณพ่อ</option>
+            <option value="parent:mom">👩 คุณแม่</option>
+            <option value="family">🏠 ครอบครัว</option>
+          </optgroup>
         </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
