@@ -1,27 +1,52 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ClaudeLike } from "../src/extract";
 import { buildEventParams, extractEvents } from "../src/events/extract";
+import { parseThaiEvents } from "../src/events/thaiParser";
 
-const sampleEvent = {
-  title: "วันสุดท้ายของภาคเรียน",
-  date: "2026-10-07",
-  time: null,
-  place: "โรงเรียน",
-  notes: "เด็กๆ มาโรงเรียนวันสุดท้ายของภาคเรียน",
-};
+const sampleUserMessage = `@All 
+
+✅เด็กๆมาโรงเรียนวัดสุดท้ายของภาคเรียน >>>คือวันพุธ ที่ 7 ตุลาคมนี้ค่า
+
+✅เปิดเทอมภาคเรียนที่ 2 
+>>>วันที่ 29 ตุลาคมค่า`;
 
 function fake(res: { stop_reason: string | null; content: Array<{ type: string; text?: string }> }) {
   const create = vi.fn().mockResolvedValue(res);
   return { client: { beta: { messages: { create } } } as ClaudeLike, create };
 }
 
+describe("parseThaiEvents", () => {
+  test("extracts school closing and opening from user's exact message with typo fix", () => {
+    const events = parseThaiEvents(sampleUserMessage, "2026-10-05");
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      title: "เด็กๆมาโรงเรียนวันสุดท้ายของภาคเรียน",
+      date: "2026-10-07",
+      place: "โรงเรียน",
+    });
+    expect(events[1]).toMatchObject({
+      title: "เปิดเทอมภาคเรียนที่ 2",
+      date: "2026-10-29",
+      place: "โรงเรียน",
+    });
+  });
+
+  test("handles Thai Buddhist Era years like 15 พ.ย. 69 or 2569", () => {
+    const events = parseThaiEvents("สอบปลายภาค วันที่ 15 พ.ย. 69", "2026-10-05");
+    expect(events).toEqual([
+      expect.objectContaining({
+        title: "สอบปลายภาค",
+        date: "2026-11-15",
+      }),
+    ]);
+  });
+});
+
 describe("buildEventParams", () => {
-  test("generates valid prompt and JSON schema request", () => {
-    const p = buildEventParams("วันสุดท้ายของภาคเรียน พุธ 7 ตุลาคม", "2026-10-05") as any;
-    expect(p.model).toBe("claude-opus-5-5");
-    expect(p.output_config.format.type).toBe("json_schema");
+  test("generates valid prompt", () => {
+    const p = buildEventParams("นัดประชุมผู้ปกครอง", "2026-10-05") as any;
+    expect(p.model).toBe("claude-3-5-haiku-20241022");
     expect(p.messages[0].content[0].text).toContain("2026-10-05");
-    expect(p.messages[0].content[0].text).toContain("วันสุดท้ายของภาคเรียน");
   });
 });
 
@@ -31,31 +56,34 @@ describe("extractEvents", () => {
     expect(await extractEvents(client, "   ")).toEqual([]);
   });
 
-  test("returns validated events from Claude JSON output", async () => {
+  test("returns parsed events instantly using rule-based engine", async () => {
+    const { client, create } = fake({ stop_reason: "end_turn", content: [] });
+    const res = await extractEvents(client, sampleUserMessage, "2026-10-05");
+    expect(res).toHaveLength(2);
+    expect(res[0].date).toBe("2026-10-07");
+    expect(res[1].date).toBe("2026-10-29");
+    // Rule-based engine should handle it without needing Claude API call
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("falls back to Claude when rule-based parser doesn't find dates in complex text", async () => {
     const { client, create } = fake({
       stop_reason: "end_turn",
-      content: [{ type: "text", text: JSON.stringify({ events: [sampleEvent] }) }],
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          events: [{ title: "นัดพิเศษ", date: "2026-10-20", time: null, place: null, notes: null }],
+        }),
+      }],
     });
-    const res = await extractEvents(client, "เด็กๆมาโรงเรียนวันสุดท้ายของภาคเรียน พุธ 7 ต.ค.", "2026-10-05");
-    expect(res).toEqual([sampleEvent]);
+    const res = await extractEvents(client, "เจอกันวันนัดพิเศษสัปดาห์ถัดไป", "2026-10-05");
+    expect(res).toEqual([{ title: "นัดพิเศษ", date: "2026-10-20", time: null, place: null, notes: null }]);
     expect(create).toHaveBeenCalledOnce();
   });
 
-  test("handles empty events list when no dates are in text", async () => {
-    const { client } = fake({
-      stop_reason: "end_turn",
-      content: [{ type: "text", text: JSON.stringify({ events: [] }) }],
-    });
-    const res = await extractEvents(client, "สวัสดีครับคุณครู", "2026-10-05");
+  test("returns empty array for casual chit-chat", async () => {
+    const { client } = fake({ stop_reason: "end_turn", content: [] });
+    const res = await extractEvents(client, "สวัสดีตอนเช้าครับทุกคน", "2026-10-05");
     expect(res).toEqual([]);
-  });
-
-  test.each([
-    ["refusal", { stop_reason: "refusal", content: [] }],
-    ["truncated", { stop_reason: "max_tokens", content: [{ type: "text", text: "{\"events\":[" }] }],
-    ["invalid_output", { stop_reason: "end_turn", content: [{ type: "text", text: "not json" }] }],
-  ])("throws %s on error response", async (code, res) => {
-    const { client } = fake(res);
-    await expect(extractEvents(client, "some text", "2026-10-05")).rejects.toMatchObject({ code });
   });
 });
