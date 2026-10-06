@@ -40,6 +40,23 @@ describe("parseThaiEvents", () => {
       }),
     ]);
   });
+
+  test("extracts relative date 'ในวันพรุ่งนี้' from workplace announcement", () => {
+    const text = `เรียน พนักงานทุกท่าน
+
+แจ้งเตือนเกี่ยวกับกิจกรรมทำบุญตักบาตรที่จะมาถึงในวันพรุ่งนี้
+
+ขอเรียนเชิญพนักงานทุกท่านมาร่วมทำบุญด้วยกันนะครับ`;
+
+    const events = parseThaiEvents(text, "2026-10-06");
+    expect(events).toEqual([
+      expect.objectContaining({
+        title: "กิจกรรมทำบุญตักบาตร",
+        date: "2026-10-07",
+        place: "ที่ทำงาน",
+      }),
+    ]);
+  });
 });
 
 describe("buildEventParams", () => {

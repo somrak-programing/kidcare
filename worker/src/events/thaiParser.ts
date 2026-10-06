@@ -39,28 +39,56 @@ const THAI_MONTHS: Record<string, number> = {
   "ธ.ค": 12,
 };
 
-// Regex to find dates like "วันพุธ ที่ 7 ตุลาคมนี้", "29 ตุลาคม", "15 พ.ย. 69", "วันที่ 5 มี.ค."
+// Regex to find explicit dates like "วันพุธ ที่ 7 ตุลาคมนี้", "29 ตุลาคม", "15 พ.ย. 69", "วันที่ 5 มี.ค."
 const DATE_REGEX =
-  /(?:วัน(?:ที่|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์)?)?\s*(?:ที่)?\s*(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|ม\.ค\.?|ก\.พ\.?|มี\.ค\.?|เม\.ย\.?|พ\.ค\.?|มิ\.ย\.?|ก\.ค\.?|ส\.ค\.?|ก\.ย\.?|ต\.ค\.?|พ\.ย\.?|ธ\.ค\.?)(?:\s*(?:พ\.?ศ\.?|ค\.?ศ\.?)?\s*(\d{2,4}))?/i;
+  /(?:วัน(?:ที่|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์)?)?\s*(?:ที่\s*:?\s*)?(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|ม\.ค\.?|ก\.พ\.?|มี\.ค\.?|เม\.ย\.?|พ\.ค\.?|มิ\.ย\.?|ก\.ค\.?|ส\.ค\.?|ก\.ย\.?|ต\.ค\.?|พ\.ย\.?|ธ\.ค\.?)(?:\s*(?:พ\.?ศ\.?|ค\.?ศ\.?)?\s*(\d{2,4}))?/i;
+
+// Regex for slash dates like "07/10/2026" or "7/10/69"
+const SLASH_DATE_REGEX = /(?:วัน(?:ที่)?\s*:?\s*)?(\d{1,2})\/(\d{1,2})\/(\d{2,4})/;
+
+// Regex for relative dates like "ในวันพรุ่งนี้", "พรุ่งนี้", "มะรืนนี้", "วันนี้"
+const RELATIVE_DATE_REGEX = /(?:ใน\s*)?(?:วัน\s*)?(พรุ่งนี้|มะรืนนี้|มะรืน|วันนี้)/i;
 
 const TIME_REGEX = /(?:เวลา\s*)?(\d{1,2})[.:](\d{2})\s*(?:น\.|นาฬิกา)?/i;
+
+function addDaysToIso(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function inferPlace(text: string): string {
+  if (/พนักงาน|บริษัท|ออฟฟิศ|ที่ทำงาน|HR|ประชุมบริษัท/i.test(text)) return "ที่ทำงาน";
+  if (/โรงเรียน|อนุบาล|ครู|นักเรียน/i.test(text)) return "โรงเรียน";
+  if (/โรงพยาบาล|รพ\.|คลินิก|แพทย์|หมอ/i.test(text)) return "โรงพยาบาล";
+  return "สถานที่ตามนัด";
+}
 
 function cleanTitle(raw: string): string {
   let s = raw
     .replace(/^[@#]\w+/g, "") // remove @All
     .replace(/^[✅✔️❌📌📢🗓️📅👉🏻👉>\-•*]+\s*/g, "") // remove leading icons/bullets
+    .replace(/เรียน\s*พนักงานทุกท่าน/gi, "")
+    .replace(/ขอเรียนเชิญพนักงานทุกท่านมาร่วมทำบุญด้วยกันนะครับ/gi, "")
+    .replace(/ขอเรียนเชิญ\S+/gi, "")
+    .replace(/แจ้งเตือนเกี่ยวกับ/gi, "")
+    .replace(/แจ้งเตือน/gi, "")
+    .replace(/ที่จะมาถึง(?:ใน)?(?:วัน)?(?:พรุ่งนี้|วันนี้|มะรืนนี้)?/gi, "")
+    .replace(/(?:ใน)?(?:วัน)?(?:พรุ่งนี้|วันนี้|มะรืนนี้)/gi, "")
     .replace(/[>]{2,}/g, " ")
     .replace(/วัดสุดท้าย/g, "วันสุดท้าย") // fix common typo
     .trim();
 
   // If title ends with weekday or connector, strip it
   s = s.replace(/\s*(?:วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|ที่)?|คือ|ใน|ณ|ตรงกับ)\s*$/g, "").trim();
+  s = s.replace(/^[:\-\s]+/, "").trim();
   return s;
 }
 
 export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[] {
   const [currentY, currentM] = todayIso.split("-").map(Number);
   const normalized = text.replace(/\r\n/g, "\n");
+  const defaultPlace = inferPlace(text);
 
   // Step 1: Split into candidate items by bullet markers, newlines, or "และ"
   let rawSections: string[] = [];
@@ -92,31 +120,47 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
 
   for (const sec of finalSections) {
     const dateMatch = sec.match(DATE_REGEX);
-    if (!dateMatch) continue;
+    const slashMatch = !dateMatch ? sec.match(SLASH_DATE_REGEX) : null;
+    const relMatch = !dateMatch && !slashMatch ? sec.match(RELATIVE_DATE_REGEX) : null;
 
-    const day = Number(dateMatch[1]);
-    const monthName = dateMatch[2].replace(/\s+/g, "");
-    const month = THAI_MONTHS[monthName];
-    if (!month || day < 1 || day > 31) continue;
+    if (!dateMatch && !slashMatch && !relMatch) continue;
 
-    let year = currentY;
-    if (dateMatch[3]) {
-      let rawY = Number(dateMatch[3]);
-      if (rawY < 100) {
-        rawY += 2500;
-      }
-      if (rawY > 2400) {
-        year = rawY - 543;
+    let isoDate = "";
+
+    if (dateMatch) {
+      const day = Number(dateMatch[1]);
+      const monthName = dateMatch[2].replace(/\s+/g, "");
+      const month = THAI_MONTHS[monthName];
+      if (!month || day < 1 || day > 31) continue;
+
+      let year = currentY;
+      if (dateMatch[3]) {
+        let rawY = Number(dateMatch[3]);
+        if (rawY < 100) rawY += 2500;
+        if (rawY > 2400) year = rawY - 543;
+        else year = rawY;
       } else {
-        year = rawY;
+        if (month < currentM - 2) year = currentY + 1;
       }
-    } else {
-      if (month < currentM - 2) {
-        year = currentY + 1;
-      }
+      isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    } else if (slashMatch) {
+      const day = Number(slashMatch[1]);
+      const month = Number(slashMatch[2]);
+      let rawY = Number(slashMatch[3]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+      if (rawY < 100) rawY += 2500;
+      let year = rawY > 2400 ? rawY - 543 : rawY;
+      isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    } else if (relMatch) {
+      const relWord = relMatch[1];
+      let offset = 0;
+      if (relWord.includes("พรุ่งนี้")) offset = 1;
+      else if (relWord.includes("มะรืน")) offset = 2;
+      else if (relWord.includes("วันนี้")) offset = 0;
+      isoDate = addDaysToIso(todayIso, offset);
     }
 
-    const isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (!isoDate) continue;
 
     // Extract time if any
     let time: string | null = null;
@@ -127,13 +171,20 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
       time = `${h}:${m}`;
     }
 
-    // Extract title from section before the date match
+    // Extract title
     let title = "";
-    const dateIdx = sec.indexOf(dateMatch[0]);
-    const beforeDate = sec.slice(0, dateIdx).trim();
+    if (dateMatch) {
+      const dateIdx = sec.indexOf(dateMatch[0]);
+      const beforeDate = sec.slice(0, dateIdx).trim();
+      if (beforeDate) title = cleanTitle(beforeDate);
+    } else if (slashMatch) {
+      const dateIdx = sec.indexOf(slashMatch[0]);
+      const beforeDate = sec.slice(0, dateIdx).trim();
+      if (beforeDate) title = cleanTitle(beforeDate);
+    }
 
-    if (beforeDate) {
-      title = cleanTitle(beforeDate);
+    if (!title || title.length < 3) {
+      title = cleanTitle(sec);
     }
 
     if (!title || title.length < 3) {
@@ -146,8 +197,19 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
       }
     }
 
+    // If still no title, inspect other meaningful lines from the entire text
     if (!title || title.length < 3) {
-      title = "กิจกรรมโรงเรียน";
+      const candidateLines = normalized
+        .split("\n")
+        .map(cleanTitle)
+        .filter((l) => l.length >= 3 && !/^(?:เรียน|ขอเรียน|แจ้งเตือน|สวัสดี|ขอบคุณ)/.test(l));
+      if (candidateLines.length > 0) {
+        title = candidateLines[0];
+      }
+    }
+
+    if (!title || title.length < 3) {
+      title = "นัดหมาย / กิจกรรม";
     }
 
     title = title.replace(/[>:]+$/g, "").trim();
@@ -156,7 +218,7 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
       title,
       date: isoDate,
       time,
-      place: "โรงเรียน",
+      place: defaultPlace,
       notes: null,
     });
   }
