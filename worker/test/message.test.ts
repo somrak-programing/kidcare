@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { bangkokDate, buildEveningReminderText, buildReminderText, thaiDay } from "../src/reminders/message";
+import { bangkokDate, buildEveningReminderText, buildReminderText, formatUpcomingSummary, thaiDay } from "../src/reminders/message";
 
 describe("bangkokDate", () => {
   test("00:00 UTC is 07:00 same day in Bangkok", () => {
@@ -83,5 +83,24 @@ describe("buildEveningReminderText", () => {
     expect(text).toContain("• คุณพ่อ: ทำบุญตักบาตร · ที่ทำงาน");
     expect(text).not.toContain("เปิดเทอม");
     expect(text).toContain("💡 เตือนล่วงหน้าช่วงเย็นเผื่อแวะซื้อของ/เตรียมอุปกรณ์ล่วงหน้าครับ");
+  });
+});
+
+describe("formatUpcomingSummary", () => {
+  test("returns empty text message if no items", () => {
+    expect(formatUpcomingSummary([])).toBe("ยังไม่มีนัดหมายอื่นที่รออยู่ครับ");
+  });
+
+  test("formats upcoming items with child name, date and details", () => {
+    const text = formatUpcomingSummary([
+      { date: "2026-10-07", childName: "คุณพ่อ", title: "ทำบุญ", time: "07:30", place: "ที่ทำงาน" },
+      { date: "2026-10-29", childName: "น้องมะลิ", title: "เปิดเทอม", place: "โรงเรียน" },
+    ]);
+    expect(text).toBe(
+      [
+        "• คุณพ่อ: ทำบุญ (พ. 7 ต.ค. 07:30 น. · ที่ทำงาน)",
+        "• น้องมะลิ: เปิดเทอม (พฤ. 29 ต.ค. · โรงเรียน)",
+      ].join("\n"),
+    );
   });
 });

@@ -187,5 +187,42 @@ describe("loadChildren and createAppointment", () => {
     expect(patchedBody.fields.time).toEqual({ stringValue: "08:30" });
     expect(patchedBody.fields.remindTiming).toEqual({ stringValue: "special" });
   });
+
+  test("loadUpcomingSummary returns sorted future items from date onwards", async () => {
+    const f = fakeFetch((url, init) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      const q = JSON.parse(init!.body as string).structuredQuery;
+      const coll = q.from[0].collectionId;
+      if (coll === "children") {
+        return json([doc("families/F/children/c1", { name: S("มะลิ") })]);
+      }
+      if (coll === "vaccineDoses") {
+        return json([
+          doc("families/F/children/c1/vaccineDoses/d1", { vaccineName: S("JE"), doseNo: I(1), dueDate: S("2026-10-15"), given: Bo(false) }),
+          doc("families/F/children/c1/vaccineDoses/d2", { vaccineName: S("BCG"), doseNo: I(1), dueDate: S("2026-09-01"), given: Bo(false) }), // past
+        ]);
+      }
+      if (coll === "appointments") {
+        return json([
+          doc("families/F/appointments/a1", { childId: S("parent:dad"), date: S("2026-10-10"), purpose: S("พบหมอฟัน"), done: Bo(false) }),
+        ]);
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const reader = createFirestoreReader(sa, f);
+    const summary = await reader.loadUpcomingSummary("F", "2026-10-06");
+    expect(summary).toHaveLength(2);
+    expect(summary[0]).toEqual({
+      date: "2026-10-10",
+      childName: "คุณพ่อ",
+      title: "พบหมอฟัน",
+    });
+    expect(summary[1]).toEqual({
+      date: "2026-10-15",
+      childName: "มะลิ",
+      title: "JE เข็ม 1",
+    });
+  });
 });
 

@@ -64,3 +64,10 @@ export function buildEveningReminderText(items: ReminderItem[], tomorrow: string
   const lines = specialTomorrow.map((i) => `• ${i.childName}: ${i.title}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""}`);
   return `🔔 KidCare — เตือนเตรียมตัวช่วงเย็น (นัดพรุ่งนี้ ${thaiDay(tomorrow)})\n${lines.join("\n")}\n\n💡 เตือนล่วงหน้าช่วงเย็นเผื่อแวะซื้อของ/เตรียมอุปกรณ์ล่วงหน้าครับ`;
 }
+
+export function formatUpcomingSummary(items: ReminderItem[], max = 5): string {
+  const deduped = dedupeItems(items).slice(0, max);
+  if (!deduped.length) return "ยังไม่มีนัดหมายอื่นที่รออยู่ครับ";
+  const lines = deduped.map((i) => `• ${i.childName}: ${i.title} (${thaiDay(i.date)}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""})`);
+  return lines.join("\n");
+}

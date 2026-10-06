@@ -125,6 +125,46 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       return items;
     },
 
+    async loadUpcomingSummary(familyId: string, fromDate: string, limit = 5): Promise<ReminderItem[]> {
+      const fam = `families/${familyId}`;
+      const children = await runQuery(fam, "children");
+      const nameOf = new Map(children.map((c) => [c.id, str(c.nickname) ?? str(c.name) ?? ""]));
+      const items: ReminderItem[] = [];
+
+      for (const c of children) {
+        const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
+        for (const d of doses) {
+          const due = str(d.dueDate);
+          if (!due || due < fromDate) continue;
+          const item: ReminderItem = { date: due, childName: nameOf.get(c.id)!, title: `${d.vaccineName} เข็ม ${d.doseNo}` };
+          if (str(d.place)) item.place = str(d.place);
+          items.push(item);
+        }
+      }
+
+      const appts = await runQuery(fam, "appointments", eq("done", { booleanValue: false }));
+      for (const a of appts) {
+        const date = str(a.date);
+        if (!date || date < fromDate) continue;
+        const cId = String(a.childId ?? "");
+        let personName = nameOf.get(cId);
+        if (!personName) {
+          if (cId === "parent:dad" || cId === "dad") personName = "คุณพ่อ";
+          else if (cId === "parent:mom" || cId === "mom") personName = "คุณแม่";
+          else if (cId === "family") personName = "ครอบครัว";
+          else personName = "";
+        }
+        const item: ReminderItem = { date, childName: personName, title: String(a.purpose ?? "") };
+        if (str(a.time)) item.time = str(a.time);
+        if (str(a.place)) item.place = str(a.place);
+        if (a.remindTiming === "special" || a.remindTiming === "normal") item.remindTiming = a.remindTiming;
+        items.push(item);
+      }
+
+      items.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));
+      return items.slice(0, limit);
+    },
+
     async loadChildren(familyId: string): Promise<Array<{ id: string; name: string; nickname?: string }>> {
       const fam = `families/${familyId}`;
       const children = await runQuery(fam, "children");

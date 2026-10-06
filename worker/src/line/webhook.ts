@@ -2,7 +2,7 @@ import type { ClaudeLike } from "../extract";
 import { extractEvents } from "../events/extract";
 import type { ExtractedEvent } from "../events/schema";
 import type { FirestoreClient } from "../reminders/firestore";
-import { thaiDay } from "../reminders/message";
+import { bangkokDate, formatUpcomingSummary, thaiDay } from "../reminders/message";
 import type { LineApi, LineQuickReplyItem } from "./api";
 import type { KVLike, RecipientStore } from "./recipients";
 
@@ -392,7 +392,21 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
             ? `(สร้างใหม่ ${createdCount} รายการ, อัปเดตนัดเดิม ${updatedCount} รายการ)`
             : `(${createdCount} รายการ)`;
 
-        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}`;
+        // โหลดสรุปนัดหมายที่รออยู่ทั้งหมดของครอบครัว
+        let upcomingSection = "";
+        if (deps.firestore.loadUpcomingSummary) {
+          try {
+            const today = bangkokDate(now());
+            const allUpcoming = await deps.firestore.loadUpcomingSummary(draft.familyId, today, 5);
+            if (allUpcoming.length > 0) {
+              upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
+            }
+          } catch {
+            // Ignore error in upcoming summary
+          }
+        }
+
+        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}${upcomingSection}`;
 
         if (ev.replyToken) {
           await deps.api.reply(ev.replyToken, successMsg).catch(() => {
