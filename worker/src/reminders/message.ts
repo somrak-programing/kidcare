@@ -26,8 +26,22 @@ export function thaiDay(iso: string): string {
   return `${WEEKDAYS[wd]} ${d} ${MONTHS[m - 1]}`;
 }
 
+function dedupeItems(items: ReminderItem[]): ReminderItem[] {
+  const seen = new Set<string>();
+  const out: ReminderItem[] = [];
+  for (const it of items) {
+    // Normalize spaces and lowercase for dedupe key
+    const cleanTitle = it.title.trim().toLowerCase();
+    const key = `${it.date}|${it.childName}|${cleanTitle}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
 function section(label: string, date: string, items: ReminderItem[]): string | null {
-  const list = items
+  const list = dedupeItems(items)
     .filter((i) => i.date === date)
     .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));
   if (!list.length) return null;
@@ -43,7 +57,7 @@ export function buildReminderText(items: ReminderItem[], today: string, tomorrow
 
 export function buildEveningReminderText(items: ReminderItem[], tomorrow: string): string | null {
   // Only items for tomorrow that have special timing
-  const specialTomorrow = items
+  const specialTomorrow = dedupeItems(items)
     .filter((i) => i.date === tomorrow && i.remindTiming === "special")
     .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));
   if (!specialTomorrow.length) return null;

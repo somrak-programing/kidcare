@@ -135,6 +135,92 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       }));
     },
 
+    async findMatchingAppointment(
+      familyId: string,
+      childId: string,
+      date: string,
+      purpose: string,
+    ): Promise<{ id: string; purpose: string; date: string } | null> {
+      const fam = `families/${familyId}`;
+      const appts = await runQuery(fam, "appointments", eq("done", { booleanValue: false }));
+      const normPurpose = purpose.trim().toLowerCase();
+      for (const a of appts) {
+        if (str(a.childId) !== childId || str(a.date) !== date) continue;
+        const p = (str(a.purpose) ?? "").trim().toLowerCase();
+        // Exact match or one contains the other (e.g. "เปิดเทอม" inside "เปิดเทอมภาคเรียนที่ 2")
+        if (p === normPurpose || (p.length >= 3 && normPurpose.includes(p)) || (normPurpose.length >= 3 && p.includes(normPurpose))) {
+          return { id: a.id, purpose: str(a.purpose) ?? "", date: str(a.date) ?? "" };
+        }
+      }
+      return null;
+    },
+
+    async updateAppointment(
+      familyId: string,
+      appointmentId: string,
+      data: {
+        childId?: string;
+        date?: string;
+        time?: string | null;
+        place?: string | null;
+        purpose?: string;
+        notes?: string | null;
+        remindTiming?: "normal" | "special";
+      },
+    ): Promise<void> {
+      token ??= getAccessToken(sa, fetchFn);
+      const accessToken = await token;
+      const fields: Record<string, FsValue> = {};
+      const updateMask: string[] = [];
+
+      if (data.childId !== undefined) {
+        fields.childId = { stringValue: data.childId };
+        updateMask.push("childId");
+      }
+      if (data.date !== undefined) {
+        fields.date = { stringValue: data.date };
+        updateMask.push("date");
+      }
+      if (data.place !== undefined && data.place !== null) {
+        fields.place = { stringValue: data.place };
+        updateMask.push("place");
+      }
+      if (data.purpose !== undefined) {
+        fields.purpose = { stringValue: data.purpose };
+        updateMask.push("purpose");
+      }
+      if (data.time !== undefined) {
+        if (data.time) fields.time = { stringValue: data.time };
+        else fields.time = { nullValue: null };
+        updateMask.push("time");
+      }
+      if (data.notes !== undefined) {
+        if (data.notes) fields.notes = { stringValue: data.notes };
+        else fields.notes = { nullValue: null };
+        updateMask.push("notes");
+      }
+      if (data.remindTiming !== undefined) {
+        fields.remindTiming = { stringValue: data.remindTiming };
+        updateMask.push("remindTiming");
+      }
+
+      if (!updateMask.length) return;
+      const maskParams = updateMask.map((f) => `updateMask.fieldPaths=${f}`).join("&");
+      const url = `${base}/families/${familyId}/appointments/${appointmentId}?${maskParams}`;
+
+      let res: Response;
+      try {
+        res = await fetchFn(url, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ fields }),
+        });
+      } catch {
+        throw new UpstreamError("firestore network error");
+      }
+      if (!res.ok) throw new UpstreamError(`firestore ${res.status}`);
+    },
+
     async createAppointment(
       familyId: string,
       data: {

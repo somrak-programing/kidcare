@@ -147,5 +147,45 @@ describe("loadChildren and createAppointment", () => {
     expect(postedBody.fields.purpose).toEqual({ stringValue: "วันสุดท้ายของภาคเรียน" });
     expect(postedBody.fields.done).toEqual({ booleanValue: false });
   });
+
+  test("findMatchingAppointment finds duplicate by childId, date and purpose match", async () => {
+    const f = fakeFetch((url, init) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      if (url === `${base}/families/F:runQuery`) {
+        return json([
+          doc("families/F/appointments/a1", { childId: S("c1"), date: S("2026-10-07"), purpose: S("เปิดเทอมภาคเรียนที่ 2"), done: Bo(false) }),
+        ]);
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const reader = createFirestoreReader(sa, f);
+    const match = await reader.findMatchingAppointment("F", "c1", "2026-10-07", "เปิดเทอม");
+    expect(match).toEqual({ id: "a1", purpose: "เปิดเทอมภาคเรียนที่ 2", date: "2026-10-07" });
+
+    const noMatch = await reader.findMatchingAppointment("F", "c1", "2026-10-08", "เปิดเทอม");
+    expect(noMatch).toBeNull();
+  });
+
+  test("updateAppointment PATCHes fields to firestore", async () => {
+    let patchedBody: any;
+    let requestUrl: string = "";
+    const f = fakeFetch((url, init) => {
+      if (url.startsWith("https://oauth2")) return json({ access_token: "at" });
+      if (init?.method === "PATCH") {
+        requestUrl = url;
+        patchedBody = JSON.parse(init.body as string);
+        return json({ name: "updated" });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const reader = createFirestoreReader(sa, f);
+    await reader.updateAppointment("F", "a1", { time: "08:30", remindTiming: "special" });
+    expect(requestUrl).toContain("updateMask.fieldPaths=time");
+    expect(requestUrl).toContain("updateMask.fieldPaths=remindTiming");
+    expect(patchedBody.fields.time).toEqual({ stringValue: "08:30" });
+    expect(patchedBody.fields.remindTiming).toEqual({ stringValue: "special" });
+  });
 });
 

@@ -183,6 +183,48 @@ describe("handleLineWebhook", () => {
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมาย"));
   });
 
+  test("postback confirm updates existing appointment when duplicate exists", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    await kv.put("draft:d123", JSON.stringify({
+      events: [{ title: "เปิดเทอม", date: "2026-10-29", time: "08:00", place: "โรงเรียน", notes: null }],
+      familyId: "fam1",
+      createdAt: "x",
+    }));
+
+    const mockFirestore = {
+      loadChildren: vi.fn().mockResolvedValue([{ id: "c1", name: "มะลิ" }]),
+      findMatchingAppointment: vi.fn().mockResolvedValue({ id: "existingAppt1", purpose: "เปิดเทอม", date: "2026-10-29" }),
+      updateAppointment: vi.fn().mockResolvedValue(undefined),
+      createAppointment: vi.fn(),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "postback",
+          replyToken: "rt",
+          postback: { data: "action=confirm&id=d123&childId=c1&timing=special" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1" },
+    );
+
+    expect(mockFirestore.updateAppointment).toHaveBeenCalledWith("fam1", "existingAppt1", {
+      time: "08:00",
+      place: "โรงเรียน",
+      purpose: "เปิดเทอม",
+      notes: null,
+      remindTiming: "special",
+    });
+    expect(mockFirestore.createAppointment).not.toHaveBeenCalled();
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("อัปเดตนัดเดิมที่มีอยู่แล้ว"));
+  });
+
   test("postback select_target asks user for normal vs special timing", async () => {
     const kv = memoryKV();
     const store = kvRecipientStore(kv);

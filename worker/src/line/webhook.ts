@@ -336,17 +336,36 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
                 ? [children[0].id]
                 : [""];
 
+        let updatedCount = 0;
+        let createdCount = 0;
+
         for (const cId of childrenToAssign) {
           for (const event of draft.events) {
-            await deps.firestore.createAppointment(draft.familyId, {
-              childId: cId,
-              date: event.date,
-              time: event.time,
-              place: event.place,
-              purpose: event.title,
-              notes: event.notes,
-              remindTiming: timing,
-            });
+            const existing = deps.firestore.findMatchingAppointment
+              ? await deps.firestore.findMatchingAppointment(draft.familyId, cId, event.date, event.title)
+              : null;
+
+            if (existing && deps.firestore.updateAppointment) {
+              await deps.firestore.updateAppointment(draft.familyId, existing.id, {
+                time: event.time,
+                place: event.place,
+                purpose: event.title,
+                notes: event.notes,
+                remindTiming: timing,
+              });
+              updatedCount++;
+            } else {
+              await deps.firestore.createAppointment(draft.familyId, {
+                childId: cId,
+                date: event.date,
+                time: event.time,
+                place: event.place,
+                purpose: event.title,
+                notes: event.notes,
+                remindTiming: timing,
+              });
+              createdCount++;
+            }
           }
         }
 
@@ -366,7 +385,14 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           timing === "special"
             ? "\n\n🔔 ตั้งค่าเตือนแบบพิเศษ: จะมีแจ้งเตือนตอนเย็น 18:00 น. ก่อนวันนัด (เผื่อเตรียมของ) และเตือนตอน 07:00 น. อีกครั้งครับ"
             : "\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ";
-        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}${timingNote}`;
+
+        const countMsg = updatedCount > 0 && createdCount === 0
+          ? `(อัปเดตนัดเดิมที่มีอยู่แล้ว ${updatedCount} รายการ)`
+          : updatedCount > 0
+            ? `(สร้างใหม่ ${createdCount} รายการ, อัปเดตนัดเดิม ${updatedCount} รายการ)`
+            : `(${createdCount} รายการ)`;
+
+        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}`;
 
         if (ev.replyToken) {
           await deps.api.reply(ev.replyToken, successMsg).catch(() => {

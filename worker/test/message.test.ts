@@ -46,10 +46,22 @@ describe("buildReminderText", () => {
       ].join("\n"),
     );
   });
-  test("only tomorrow section when nothing today", () => {
-    const text = buildReminderText([{ date: M, childName: "มะลิ", title: "x" }], T, M)!;
-    expect(text).not.toContain("วันนี้");
-    expect(text).toContain("พรุ่งนี้ (ส. 3 ต.ค.)");
+  test("deduplicates identical appointments on the same day for the same person", () => {
+    const text = buildReminderText(
+      [
+        { date: T, childName: "คุณพ่อ", title: "ทำบุญตักบาตร", place: "ที่ทำงาน" },
+        { date: T, childName: "คุณพ่อ", title: "ทำบุญตักบาตร", place: "ที่ทำงาน" },
+      ],
+      T,
+      M,
+    );
+    expect(text).toBe(
+      [
+        "🔔 KidCare — แจ้งเตือนนัดหมาย",
+        "วันนี้ (ศ. 2 ต.ค.)",
+        "• คุณพ่อ: ทำบุญตักบาตร · ที่ทำงาน",
+      ].join("\n"),
+    );
   });
 });
 
