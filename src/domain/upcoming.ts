@@ -10,6 +10,7 @@ export interface UpcomingItem {
   time?: string;
   title: string;
   place?: string;
+  remindTiming?: "normal" | "special";
 }
 
 export const byDateTime = (a: UpcomingItem, b: UpcomingItem) =>

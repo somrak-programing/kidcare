@@ -141,8 +141,8 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           action: {
             type: "postback",
             label: `✅ บันทึกให้${name}`.slice(0, 20),
-            data: `action=confirm&id=${draftId}&childId=${child.id}`,
-            displayText: `ยืนยันบันทึกให้${name}`,
+            data: `action=select_target&id=${draftId}&childId=${child.id}`,
+            displayText: `บันทึกให้${name}`,
           },
         });
       } else if (children.length > 1) {
@@ -153,7 +153,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
             action: {
               type: "postback",
               label: `บันทึกให้${name}`.slice(0, 20),
-              data: `action=confirm&id=${draftId}&childId=${child.id}`,
+              data: `action=select_target&id=${draftId}&childId=${child.id}`,
               displayText: `บันทึกให้${name}`,
             },
           });
@@ -163,7 +163,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           action: {
             type: "postback",
             label: "👨‍👩‍👧‍👦 ให้เด็กทุกคน",
-            data: `action=confirm&id=${draftId}&childId=all`,
+            data: `action=select_target&id=${draftId}&childId=all`,
             displayText: "บันทึกให้เด็กทุกคน",
           },
         });
@@ -173,8 +173,8 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           action: {
             type: "postback",
             label: "✅ บันทึกนัดหมาย",
-            data: `action=confirm&id=${draftId}&childId=`,
-            displayText: "ยืนยันบันทึก",
+            data: `action=select_target&id=${draftId}&childId=`,
+            displayText: "บันทึกนัดหมาย",
           },
         });
       }
@@ -185,7 +185,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         action: {
           type: "postback",
           label: "👨 บันทึกให้พ่อ",
-          data: `action=confirm&id=${draftId}&childId=parent:dad`,
+          data: `action=select_target&id=${draftId}&childId=parent:dad`,
           displayText: "บันทึกให้พ่อ",
         },
       });
@@ -194,7 +194,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         action: {
           type: "postback",
           label: "👩 บันทึกให้แม่",
-          data: `action=confirm&id=${draftId}&childId=parent:mom`,
+          data: `action=select_target&id=${draftId}&childId=parent:mom`,
           displayText: "บันทึกให้แม่",
         },
       });
@@ -241,7 +241,71 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         continue;
       }
 
+      if (action === "select_target") {
+        const raw = await deps.kv.get(`draft:${draftId}`);
+        if (!raw) {
+          if (ev.replyToken) {
+            await deps.api.reply(ev.replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
+              console.error("line reply failed");
+            });
+          }
+          continue;
+        }
+
+        let targetLabel = "นัดหมายนี้";
+        if (targetChildId === "parent:dad") targetLabel = "คุณพ่อ";
+        else if (targetChildId === "parent:mom") targetLabel = "คุณแม่";
+        else if (targetChildId === "all") targetLabel = "ทุกคนในบ้าน";
+        else if (targetChildId && deps.firestore) {
+          const children = await deps.firestore.loadChildren(deps.familyId ?? "").catch(() => []);
+          const matched = children.find((c) => c.id === targetChildId);
+          if (matched) targetLabel = `น้อง${matched.nickname || matched.name}`;
+        }
+
+        const items: LineQuickReplyItem[] = [
+          {
+            type: "action",
+            action: {
+              type: "postback",
+              label: "🔔 ปกติ (เช้า 07:00)",
+              data: `action=confirm&id=${draftId}&childId=${targetChildId ?? ""}&timing=normal`,
+              displayText: "เตือนแบบปกติ",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "postback",
+              label: "⭐ พิเศษ (+เตือนเย็น)",
+              data: `action=confirm&id=${draftId}&childId=${targetChildId ?? ""}&timing=special`,
+              displayText: "เตือนแบบพิเศษ (+เย็นก่อนวันนัด)",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "postback",
+              label: "❌ ยกเลิก",
+              data: `action=cancel&id=${draftId}`,
+              displayText: "ยกเลิก",
+            },
+          },
+        ];
+
+        if (ev.replyToken) {
+          await deps.api.reply(ev.replyToken, {
+            type: "text",
+            text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)`,
+            quickReply: { items },
+          }).catch(() => {
+            console.error("line reply failed");
+          });
+        }
+        continue;
+      }
+
       if (action === "confirm") {
+        const timing = params.get("timing") === "special" ? "special" : "normal";
         const raw = await deps.kv.get(`draft:${draftId}`);
         if (!raw) {
           if (ev.replyToken) {
@@ -281,6 +345,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
               place: event.place,
               purpose: event.title,
               notes: event.notes,
+              remindTiming: timing,
             });
           }
         }
@@ -297,7 +362,11 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         }
 
         const summaryLines = draft.events.map((e) => `• ${e.title} (${thaiDay(e.date)})`);
-        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ`;
+        const timingNote =
+          timing === "special"
+            ? "\n\n🔔 ตั้งค่าเตือนแบบพิเศษ: จะมีแจ้งเตือนตอนเย็น 18:00 น. ก่อนวันนัด (เผื่อเตรียมของ) และเตือนตอน 07:00 น. อีกครั้งครับ"
+            : "\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ";
+        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! (${draft.events.length} รายการ)\n\n${summaryLines.join("\n")}${timingNote}`;
 
         if (ev.replyToken) {
           await deps.api.reply(ev.replyToken, successMsg).catch(() => {

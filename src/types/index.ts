@@ -95,6 +95,7 @@ export interface Appointment {
   place: string;
   purpose: string;
   linkedDoseId?: string;
+  remindTiming?: "normal" | "special"; // "normal" = เช้าวันนัดและก่อนวันนัด, "special" = เพิ่มเตือนเย็นก่อนวันนัด (18:00 น.) เพื่อเตรียมของ
   notes?: string;
   done: boolean;
 }

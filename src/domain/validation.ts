@@ -33,6 +33,7 @@ export const appointmentSchema = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/, "รูปแบบเวลาไม่ถูกต้อง").optional(),
   place: z.string().trim().min(1, "กรุณาใส่สถานที่"),
   purpose: z.string().trim().min(1, "กรุณาใส่เรื่องที่นัด"),
+  remindTiming: z.enum(["normal", "special"]).optional(),
   notes: optText,
 });
 

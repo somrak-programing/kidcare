@@ -12,7 +12,7 @@ FAMILY_ID = "XqMb4retoBTkO7feIQkS"
 LINE_ADD_FRIEND_URL = "https://line.me/R/ti/p/@390rtcff"
 
 [triggers]
-crons = ["0 0 * * *"] # 07:00 Asia/Bangkok
+crons = ["0 0 * * *", "0 11 * * *"] # 07:00 Asia/Bangkok (เช้า) และ 18:00 Asia/Bangkok (เย็น)
 
 [[kv_namespaces]]
 binding = "LINE_KV"

@@ -12,7 +12,7 @@ export function toUpcomingItems(doses: VaccineDose[], appts: Appointment[]): Upc
       .map((d) => ({ kind: "dose" as const, id: d.id, childId: d.childId, date: d.dueDate!, title: `${d.vaccineName} เข็ม ${d.doseNo}`, place: d.place })),
     ...appts
       .filter((a) => !a.done)
-      .map((a) => ({ kind: "appointment" as const, id: a.id, childId: a.childId, date: a.date, time: a.time, title: a.purpose, place: a.place })),
+      .map((a) => ({ kind: "appointment" as const, id: a.id, childId: a.childId, date: a.date, time: a.time, title: a.purpose, place: a.place, remindTiming: a.remindTiming })),
   ];
 }
 

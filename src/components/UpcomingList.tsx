@@ -52,7 +52,14 @@ export default function UpcomingList({
               {list.map((it) => (
                 <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-xl border-l-4 ${border} border-t border-r border-b bg-card p-3.5 shadow-xs transition-colors hover:border-primary/40`}>
                   <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">
-                    <p className="font-semibold text-foreground">{who(it.childId)} · {it.title}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-foreground">{who(it.childId)} · {it.title}</p>
+                      {it.remindTiming === "special" && (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium">
+                          🔔 เตือนเย็นพิเศษ
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
                   </Link>
                   <div className="flex flex-wrap gap-1.5 pt-1">

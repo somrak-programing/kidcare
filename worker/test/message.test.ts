@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { bangkokDate, buildReminderText, thaiDay } from "../src/reminders/message";
+import { bangkokDate, buildEveningReminderText, buildReminderText, thaiDay } from "../src/reminders/message";
 
 describe("bangkokDate", () => {
   test("00:00 UTC is 07:00 same day in Bangkok", () => {
@@ -36,7 +36,7 @@ describe("buildReminderText", () => {
     );
     expect(text).toBe(
       [
-        "🔔 KidCare — นัดของลูก",
+        "🔔 KidCare — แจ้งเตือนนัดหมาย",
         "วันนี้ (ศ. 2 ต.ค.)",
         "• มะลิ: พิษสุนัขบ้า เข็ม 2 · รพ.เมืองสมุทรปากน้ำ",
         "",
@@ -50,5 +50,26 @@ describe("buildReminderText", () => {
     const text = buildReminderText([{ date: M, childName: "มะลิ", title: "x" }], T, M)!;
     expect(text).not.toContain("วันนี้");
     expect(text).toContain("พรุ่งนี้ (ส. 3 ต.ค.)");
+  });
+});
+
+describe("buildEveningReminderText", () => {
+  const M = "2026-10-03";
+  test("returns null if no items or no special timing items for tomorrow", () => {
+    expect(buildEveningReminderText([], M)).toBeNull();
+    expect(buildEveningReminderText([{ date: M, childName: "มะลิ", title: "x", remindTiming: "normal" }], M)).toBeNull();
+  });
+  test("formats evening prep text for items with special timing", () => {
+    const text = buildEveningReminderText(
+      [
+        { date: M, childName: "คุณพ่อ", title: "ทำบุญตักบาตร", remindTiming: "special", place: "ที่ทำงาน" },
+        { date: M, childName: "น้องมะลิ", title: "เปิดเทอม", remindTiming: "normal" },
+      ],
+      M,
+    );
+    expect(text).toContain("🔔 KidCare — เตือนเตรียมตัวช่วงเย็น (นัดพรุ่งนี้ ส. 3 ต.ค.)");
+    expect(text).toContain("• คุณพ่อ: ทำบุญตักบาตร · ที่ทำงาน");
+    expect(text).not.toContain("เปิดเทอม");
+    expect(text).toContain("💡 เตือนล่วงหน้าช่วงเย็นเผื่อแวะซื้อของ/เตรียมอุปกรณ์ล่วงหน้าครับ");
   });
 });

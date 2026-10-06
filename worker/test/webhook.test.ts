@@ -124,7 +124,7 @@ describe("handleLineWebhook", () => {
               action: expect.objectContaining({
                 type: "postback",
                 label: "✅ บันทึกให้มะลิ",
-                data: expect.stringMatching(/action=confirm&id=\w+&childId=c1/),
+                data: expect.stringMatching(/action=select_target&id=\w+&childId=c1/),
               }),
             }),
             expect.objectContaining({
@@ -177,9 +177,57 @@ describe("handleLineWebhook", () => {
       place: "โรงเรียน",
       purpose: "เปิดเทอม",
       notes: null,
+      remindTiming: "normal",
     });
     expect(await kv.get("draft:d123")).toBeNull();
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมาย"));
+  });
+
+  test("postback select_target asks user for normal vs special timing", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    await kv.put("draft:d123", JSON.stringify({
+      events: [{ title: "ทำบุญ", date: "2026-10-07", time: null, place: "วัด", notes: null }],
+      familyId: "fam1",
+      createdAt: "x",
+    }));
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "postback",
+          replyToken: "rt",
+          postback: { data: "action=select_target&id=d123&childId=parent:dad" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, familyId: "fam1" },
+    );
+
+    expect(a.reply).toHaveBeenCalledWith(
+      "rt",
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("ต้องการตั้งเวลาแจ้งเตือน"),
+        quickReply: expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              action: expect.objectContaining({
+                data: expect.stringContaining("timing=normal"),
+              }),
+            }),
+            expect.objectContaining({
+              action: expect.objectContaining({
+                data: expect.stringContaining("timing=special"),
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 
   test("postback cancel deletes draft and confirms cancelation", async () => {

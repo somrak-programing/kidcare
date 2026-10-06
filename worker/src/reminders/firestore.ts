@@ -119,6 +119,7 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
         const item: ReminderItem = { date, childName: personName, title: String(a.purpose ?? "") };
         if (str(a.time)) item.time = str(a.time);
         if (str(a.place)) item.place = str(a.place);
+        if (a.remindTiming === "special" || a.remindTiming === "normal") item.remindTiming = a.remindTiming;
         items.push(item);
       }
       return items;
@@ -136,7 +137,15 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
 
     async createAppointment(
       familyId: string,
-      data: { childId: string; date: string; time?: string | null; place?: string | null; purpose: string; notes?: string | null },
+      data: {
+        childId: string;
+        date: string;
+        time?: string | null;
+        place?: string | null;
+        purpose: string;
+        notes?: string | null;
+        remindTiming?: "normal" | "special";
+      },
     ): Promise<string> {
       token ??= getAccessToken(sa, fetchFn);
       const accessToken = await token;
@@ -150,6 +159,7 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       };
       if (data.time) fields.time = { stringValue: data.time };
       if (data.notes) fields.notes = { stringValue: data.notes };
+      if (data.remindTiming) fields.remindTiming = { stringValue: data.remindTiming };
 
       let res: Response;
       try {

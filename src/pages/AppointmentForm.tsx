@@ -35,6 +35,7 @@ export default function AppointmentForm() {
   const [time, setTime] = useState("");
   const [place, setPlace] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [remindTiming, setRemindTiming] = useState<"normal" | "special">("normal");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const prefilledId = useRef<string | null>(null);
@@ -59,6 +60,7 @@ export default function AppointmentForm() {
     setTime(existing.time ?? "");
     setPlace(existing.place);
     setPurpose(existing.purpose);
+    setRemindTiming(existing.remindTiming ?? "normal");
     setNotes(existing.notes ?? "");
   }, [existing]);
 
@@ -69,7 +71,7 @@ export default function AppointmentForm() {
   }
 
   function onSave() {
-    const r = appointmentSchema.safeParse({ childId, date, time: time || undefined, place, purpose, notes });
+    const r = appointmentSchema.safeParse({ childId, date, time: time || undefined, place, purpose, remindTiming, notes });
     const m = firstError(r);
     if (m || !r.success) return setError(m);
     saveAppointment(fid, { ...r.data, done: existing?.done ?? false }, apptId);
@@ -128,6 +130,39 @@ export default function AppointmentForm() {
       <div className="space-y-1">
         <Label htmlFor={`${uid}-notes`}>หมายเหตุ</Label>
         <Input id={`${uid}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </div>
+      <div className="space-y-1.5 rounded-lg border border-border/80 bg-muted/40 p-3">
+        <Label className="text-xs font-semibold text-foreground">🔔 รูปแบบการแจ้งเตือน LINE</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-1">
+          <label className={`flex items-start gap-2.5 p-2 rounded-md border cursor-pointer transition-colors ${remindTiming === "normal" ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
+            <input
+              type="radio"
+              name="remindTiming"
+              value="normal"
+              checked={remindTiming === "normal"}
+              onChange={() => setRemindTiming("normal")}
+              className="mt-1"
+            />
+            <div>
+              <div className="font-medium text-foreground text-xs sm:text-sm">ปกติ (2 รอบ)</div>
+              <div className="text-[11px] text-muted-foreground leading-tight">เตือนเช้า 07:00 น. ล่วงหน้า 1 วัน และเช้าวันนัดหมาย</div>
+            </div>
+          </label>
+          <label className={`flex items-start gap-2.5 p-2 rounded-md border cursor-pointer transition-colors ${remindTiming === "special" ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
+            <input
+              type="radio"
+              name="remindTiming"
+              value="special"
+              checked={remindTiming === "special"}
+              onChange={() => setRemindTiming("special")}
+              className="mt-1"
+            />
+            <div>
+              <div className="font-medium text-foreground text-xs sm:text-sm">พิเศษ (+เตือนเย็นเตรียมของ)</div>
+              <div className="text-[11px] text-muted-foreground leading-tight">เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด เผื่อไปซื้อของ/เตรียมตัว</div>
+            </div>
+          </label>
+        </div>
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">

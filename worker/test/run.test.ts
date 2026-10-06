@@ -33,3 +33,20 @@ test("no approved recipients → does not even read Firestore", async () => {
   expect(await runDailyReminders({ now: NOW, familyId: "F", reader, store: await storeWith(["U2", "pending"]), api: api() })).toEqual({ sent: 0, items: 0, recipients: 0 });
   expect(reader.loadReminderItems).not.toHaveBeenCalled();
 });
+
+test("evening run: queries tomorrow only and notifies special reminders", async () => {
+  const reader = {
+    loadReminderItems: vi.fn(async () => [
+      { date: "2026-10-03", childName: "คุณพ่อ", title: "ทำบุญตักบาตร", remindTiming: "special", place: "ที่ทำงาน" },
+      { date: "2026-10-03", childName: "น้องมะลิ", title: "เปิดเทอม", remindTiming: "normal" },
+    ]),
+  };
+  const a = api();
+  // 18:00 Bangkok time is 11:00 UTC
+  const EVENING = new Date("2026-10-02T11:00:00Z");
+  const r = await runDailyReminders({ now: EVENING, familyId: "F", reader, store: await storeWith(["U1", "approved"]), api: a });
+  expect(r).toEqual({ sent: 1, items: 2, recipients: 1 });
+  expect(reader.loadReminderItems).toHaveBeenCalledWith("F", ["2026-10-03"]);
+  expect(a.multicast).toHaveBeenCalledWith(["U1"], expect.stringContaining("🔔 KidCare — เตือนเตรียมตัวช่วงเย็น"));
+  expect(a.multicast).toHaveBeenCalledWith(["U1"], expect.stringContaining("• คุณพ่อ: ทำบุญตักบาตร"));
+});

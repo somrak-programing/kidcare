@@ -9,10 +9,15 @@ export interface ReminderItem {
   title: string;
   time?: string;
   place?: string;
+  remindTiming?: "normal" | "special";
 }
 
 export function bangkokDate(now: Date, addDays = 0): string {
   return new Date(now.getTime() + BKK_OFFSET_MS + addDays * DAY_MS).toISOString().slice(0, 10);
+}
+
+export function bangkokHour(now: Date): number {
+  return new Date(now.getTime() + BKK_OFFSET_MS).getUTCHours();
 }
 
 export function thaiDay(iso: string): string {
@@ -33,5 +38,15 @@ function section(label: string, date: string, items: ReminderItem[]): string | n
 export function buildReminderText(items: ReminderItem[], today: string, tomorrow: string): string | null {
   const parts = [section("วันนี้", today, items), section("พรุ่งนี้", tomorrow, items)].filter((p): p is string => p !== null);
   if (!parts.length) return null;
-  return `🔔 KidCare — นัดของลูก\n${parts.join("\n\n")}`;
+  return `🔔 KidCare — แจ้งเตือนนัดหมาย\n${parts.join("\n\n")}`;
+}
+
+export function buildEveningReminderText(items: ReminderItem[], tomorrow: string): string | null {
+  // Only items for tomorrow that have special timing
+  const specialTomorrow = items
+    .filter((i) => i.date === tomorrow && i.remindTiming === "special")
+    .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));
+  if (!specialTomorrow.length) return null;
+  const lines = specialTomorrow.map((i) => `• ${i.childName}: ${i.title}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""}`);
+  return `🔔 KidCare — เตือนเตรียมตัวช่วงเย็น (นัดพรุ่งนี้ ${thaiDay(tomorrow)})\n${lines.join("\n")}\n\n💡 เตือนล่วงหน้าช่วงเย็นเผื่อแวะซื้อของ/เตรียมอุปกรณ์ล่วงหน้าครับ`;
 }
