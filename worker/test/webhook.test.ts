@@ -295,5 +295,45 @@ describe("handleLineWebhook", () => {
     expect(await kv.get("draft:d999")).toBeNull();
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("ยกเลิกการบันทึก"));
   });
+
+  test("user can type text 'เตือนแบบพิเศษ' to confirm active draft", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    await kv.put("draft:d555", JSON.stringify({
+      events: [{ title: "กิจกรรมทำบุญ", date: "2026-10-08", time: null, place: "ที่ทำงาน", notes: null }],
+      familyId: "fam1",
+      createdAt: "x",
+      targetChildId: "parent:dad",
+    }));
+    await kv.put("user_draft:U1", "d555");
+
+    const mockFirestore = {
+      loadChildren: vi.fn().mockResolvedValue([{ id: "c1", name: "มะลิ" }]),
+      createAppointment: vi.fn().mockResolvedValue("newAppt"),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "message",
+          replyToken: "rt",
+          message: { type: "text", text: "เตือนแบบพิเศษ (+เย็นก่อนวันนัด)" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1", client: {} as any },
+    );
+
+    expect(mockFirestore.createAppointment).toHaveBeenCalledWith("fam1", expect.objectContaining({
+      childId: "parent:dad",
+      purpose: "กิจกรรมทำบุญ",
+      remindTiming: "special",
+    }));
+    expect(await kv.get("user_draft:U1")).toBeNull();
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมายของคุณพ่อ"));
+  });
 });
 

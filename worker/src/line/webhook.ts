@@ -17,6 +17,7 @@ export interface DraftEvents {
   events: ExtractedEvent[];
   familyId: string;
   createdAt: string;
+  targetChildId?: string;
 }
 
 interface LineEvent {
@@ -92,6 +93,98 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         continue;
       }
 
+      // Check if user has an active pending draft and sent a response (e.g. "เตือนแบบพิเศษ", "พิเศษ", "ปกติ", "บันทึกให้พ่อ")
+      const pendingDraftId = await deps.kv.get(`user_draft:${userId}`);
+      if (pendingDraftId) {
+        const rawDraft = await deps.kv.get(`draft:${pendingDraftId}`);
+        if (rawDraft) {
+          const lower = text.toLowerCase();
+
+          // 1. ตอบรูปแบบการเตือน: พิเศษ / ปกติ
+          if (lower.includes("พิเศษ")) {
+            await executeConfirmation(pendingDraftId, undefined, "special", ev.replyToken, deps, now);
+            await deps.kv.delete(`user_draft:${userId}`);
+            continue;
+          }
+          if (lower.includes("ปกติ")) {
+            await executeConfirmation(pendingDraftId, undefined, "normal", ev.replyToken, deps, now);
+            await deps.kv.delete(`user_draft:${userId}`);
+            continue;
+          }
+          if (lower === "ยกเลิก" || lower === "cancel") {
+            await deps.kv.delete(`draft:${pendingDraftId}`);
+            await deps.kv.delete(`user_draft:${userId}`);
+            if (ev.replyToken) {
+              await deps.api.reply(ev.replyToken, REPLY_CANCELLED).catch(() => {
+                console.error("line reply failed");
+              });
+            }
+            continue;
+          }
+
+          // 2. ตอบเลือกบุคคล: พ่อ / แม่ / ลูก
+          let chosenTarget: string | null = null;
+          if (lower.includes("พ่อ")) chosenTarget = "parent:dad";
+          else if (lower.includes("แม่")) chosenTarget = "parent:mom";
+          else if (lower.includes("ทุกคน")) chosenTarget = "all";
+
+          if (chosenTarget) {
+            let parsed: DraftEvents;
+            try {
+              parsed = JSON.parse(rawDraft);
+              parsed.targetChildId = chosenTarget;
+              await deps.kv.put(`draft:${pendingDraftId}`, JSON.stringify(parsed), { expirationTtl: 600 });
+            } catch {
+              // ignore
+            }
+
+            const targetLabel = chosenTarget === "parent:dad" ? "คุณพ่อ" : chosenTarget === "parent:mom" ? "คุณแม่" : "ทุกคนในบ้าน";
+            const timingItems: LineQuickReplyItem[] = [
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "🔔 ปกติ (เช้า 07:00)",
+                  data: `action=confirm&id=${pendingDraftId}&childId=${chosenTarget}&timing=normal`,
+                  displayText: "เตือนแบบปกติ",
+                },
+              },
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "⭐ พิเศษ (+เตือนเย็น)",
+                  data: `action=confirm&id=${pendingDraftId}&childId=${chosenTarget}&timing=special`,
+                  displayText: "เตือนแบบพิเศษ (+เย็นก่อนวันนัด)",
+                },
+              },
+              {
+                type: "action",
+                action: {
+                  type: "postback",
+                  label: "❌ ยกเลิก",
+                  data: `action=cancel&id=${pendingDraftId}`,
+                  displayText: "ยกเลิก",
+                },
+              },
+            ];
+
+            if (ev.replyToken) {
+              await deps.api.reply(ev.replyToken, {
+                type: "text",
+                text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)\n\n(กดปุ่มหรือพิมพ์ 'ปกติ' / 'พิเศษ' ได้เลยครับ)`,
+                quickReply: { items: timingItems },
+              }).catch(() => {
+                console.error("line reply failed");
+              });
+            }
+            continue;
+          }
+        } else {
+          await deps.kv.delete(`user_draft:${userId}`);
+        }
+      }
+
       let events: ExtractedEvent[] = [];
       try {
         events = await extractEvents(deps.client, text, now().toISOString().slice(0, 10));
@@ -120,6 +213,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         JSON.stringify({ events, familyId: deps.familyId, createdAt: now().toISOString() }),
         { expirationTtl: 600 },
       );
+      await deps.kv.put(`user_draft:${userId}`, draftId, { expirationTtl: 600 });
 
       const children = await deps.firestore.loadChildren(deps.familyId).catch(() => []);
 
@@ -252,6 +346,16 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           continue;
         }
 
+        let parsedDraft: DraftEvents;
+        try {
+          parsedDraft = JSON.parse(raw);
+          parsedDraft.targetChildId = targetChildId ?? "";
+          await deps.kv.put(`draft:${draftId}`, JSON.stringify(parsedDraft), { expirationTtl: 600 });
+          await deps.kv.put(`user_draft:${userId}`, draftId, { expirationTtl: 600 });
+        } catch {
+          // ignore parse error
+        }
+
         let targetLabel = "นัดหมายนี้";
         if (targetChildId === "parent:dad") targetLabel = "คุณพ่อ";
         else if (targetChildId === "parent:mom") targetLabel = "คุณแม่";
@@ -306,114 +410,125 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
 
       if (action === "confirm") {
         const timing = params.get("timing") === "special" ? "special" : "normal";
-        const raw = await deps.kv.get(`draft:${draftId}`);
-        if (!raw) {
-          if (ev.replyToken) {
-            await deps.api.reply(ev.replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
-              console.error("line reply failed");
-            });
-          }
-          continue;
-        }
-
-        let draft: DraftEvents;
-        try {
-          draft = JSON.parse(raw);
-        } catch {
-          await deps.kv.delete(`draft:${draftId}`);
-          continue;
-        }
-
-        if (!deps.firestore) continue;
-
-        const children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
-        const childrenToAssign =
-          targetChildId === "all"
-            ? children.map((c) => c.id)
-            : targetChildId
-              ? [targetChildId]
-              : children.length
-                ? [children[0].id]
-                : [""];
-
-        let updatedCount = 0;
-        let createdCount = 0;
-
-        for (const cId of childrenToAssign) {
-          for (const event of draft.events) {
-            const existing = deps.firestore.findMatchingAppointment
-              ? await deps.firestore.findMatchingAppointment(draft.familyId, cId, event.date, event.title)
-              : null;
-
-            if (existing && deps.firestore.updateAppointment) {
-              await deps.firestore.updateAppointment(draft.familyId, existing.id, {
-                time: event.time,
-                place: event.place,
-                purpose: event.title,
-                notes: event.notes,
-                remindTiming: timing,
-              });
-              updatedCount++;
-            } else {
-              await deps.firestore.createAppointment(draft.familyId, {
-                childId: cId,
-                date: event.date,
-                time: event.time,
-                place: event.place,
-                purpose: event.title,
-                notes: event.notes,
-                remindTiming: timing,
-              });
-              createdCount++;
-            }
-          }
-        }
-
-        await deps.kv.delete(`draft:${draftId}`);
-
-        let targetLabel = "";
-        if (targetChildId === "parent:dad") targetLabel = "ของคุณพ่อ ";
-        else if (targetChildId === "parent:mom") targetLabel = "ของคุณแม่ ";
-        else if (targetChildId === "all") targetLabel = "ของทุกคน ";
-        else if (targetChildId) {
-          const matched = children.find((c) => c.id === targetChildId);
-          if (matched) targetLabel = `ของน้อง${matched.nickname || matched.name} `;
-        }
-
-        const summaryLines = draft.events.map((e) => `• ${e.title} (${thaiDay(e.date)})`);
-        const timingNote =
-          timing === "special"
-            ? "\n\n🔔 ตั้งค่าเตือนแบบพิเศษ: จะมีแจ้งเตือนตอนเย็น 18:00 น. ก่อนวันนัด (เผื่อเตรียมของ) และเตือนตอน 07:00 น. อีกครั้งครับ"
-            : "\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ";
-
-        const countMsg = updatedCount > 0 && createdCount === 0
-          ? `(อัปเดตนัดเดิมที่มีอยู่แล้ว ${updatedCount} รายการ)`
-          : updatedCount > 0
-            ? `(สร้างใหม่ ${createdCount} รายการ, อัปเดตนัดเดิม ${updatedCount} รายการ)`
-            : `(${createdCount} รายการ)`;
-
-        // โหลดสรุปนัดหมายที่รออยู่ทั้งหมดของครอบครัว
-        let upcomingSection = "";
-        if (deps.firestore.loadUpcomingSummary) {
-          try {
-            const today = bangkokDate(now());
-            const allUpcoming = await deps.firestore.loadUpcomingSummary(draft.familyId, today, 5);
-            if (allUpcoming.length > 0) {
-              upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
-            }
-          } catch {
-            // Ignore error in upcoming summary
-          }
-        }
-
-        const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}${upcomingSection}`;
-
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, successMsg).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await executeConfirmation(draftId, targetChildId, timing, ev.replyToken, deps, now);
+        continue;
       }
     }
+  }
+}
+
+async function executeConfirmation(
+  draftId: string,
+  targetChildId: string | undefined | null,
+  timing: "normal" | "special",
+  replyToken: string | undefined,
+  deps: WebhookDeps,
+  now: () => Date,
+): Promise<void> {
+  if (!deps.kv || !deps.firestore) return;
+  const raw = await deps.kv.get(`draft:${draftId}`);
+  if (!raw) {
+    if (replyToken) {
+      await deps.api.reply(replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
+        console.error("line reply failed");
+      });
+    }
+    return;
+  }
+
+  let draft: DraftEvents;
+  try {
+    draft = JSON.parse(raw);
+  } catch {
+    await deps.kv.delete(`draft:${draftId}`);
+    return;
+  }
+
+  const childIdToUse = targetChildId || draft.targetChildId;
+  const children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
+  const childrenToAssign =
+    childIdToUse === "all"
+      ? children.map((c) => c.id)
+      : childIdToUse
+        ? [childIdToUse]
+        : children.length
+          ? [children[0].id]
+          : [""];
+
+  let updatedCount = 0;
+  let createdCount = 0;
+
+  for (const cId of childrenToAssign) {
+    for (const event of draft.events) {
+      const existing = deps.firestore.findMatchingAppointment
+        ? await deps.firestore.findMatchingAppointment(draft.familyId, cId, event.date, event.title)
+        : null;
+
+      if (existing && deps.firestore.updateAppointment) {
+        await deps.firestore.updateAppointment(draft.familyId, existing.id, {
+          time: event.time,
+          place: event.place,
+          purpose: event.title,
+          notes: event.notes,
+          remindTiming: timing,
+        });
+        updatedCount++;
+      } else {
+        await deps.firestore.createAppointment(draft.familyId, {
+          childId: cId,
+          date: event.date,
+          time: event.time,
+          place: event.place,
+          purpose: event.title,
+          notes: event.notes,
+          remindTiming: timing,
+        });
+        createdCount++;
+      }
+    }
+  }
+
+  await deps.kv.delete(`draft:${draftId}`);
+
+  let targetLabel = "";
+  if (childIdToUse === "parent:dad") targetLabel = "ของคุณพ่อ ";
+  else if (childIdToUse === "parent:mom") targetLabel = "ของคุณแม่ ";
+  else if (childIdToUse === "all") targetLabel = "ของทุกคน ";
+  else if (childIdToUse) {
+    const matched = children.find((c) => c.id === childIdToUse);
+    if (matched) targetLabel = `ของน้อง${matched.nickname || matched.name} `;
+  }
+
+  const summaryLines = draft.events.map((e) => `• ${e.title} (${thaiDay(e.date)})`);
+  const timingNote =
+    timing === "special"
+      ? "\n\n🔔 ตั้งค่าเตือนแบบพิเศษ: จะมีแจ้งเตือนตอนเย็น 18:00 น. ก่อนวันนัด (เผื่อเตรียมของ) และเตือนตอน 07:00 น. อีกครั้งครับ"
+      : "\n\n🔔 KidCare จะส่งข้อความแจ้งเตือนทาง LINE ให้ตอน 07:00 น. เมื่อถึงวันนัดหมายครับ";
+
+  const countMsg = updatedCount > 0 && createdCount === 0
+    ? `(อัปเดตนัดเดิมที่มีอยู่แล้ว ${updatedCount} รายการ)`
+    : updatedCount > 0
+      ? `(สร้างใหม่ ${createdCount} รายการ, อัปเดตนัดเดิม ${updatedCount} รายการ)`
+      : `(${createdCount} รายการ)`;
+
+  let upcomingSection = "";
+  if (deps.firestore.loadUpcomingSummary) {
+    try {
+      const today = bangkokDate(now());
+      const allUpcoming = await deps.firestore.loadUpcomingSummary(draft.familyId, today, 5);
+      if (allUpcoming.length > 0) {
+        upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
+      }
+    } catch {
+      // Ignore error in upcoming summary
+    }
+  }
+
+  const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}${upcomingSection}`;
+
+  if (replyToken) {
+    await deps.api.reply(replyToken, successMsg).catch(() => {
+      console.error("line reply failed");
+    });
   }
 }
