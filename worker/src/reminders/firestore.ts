@@ -1,5 +1,6 @@
 import { SignJWT, importPKCS8 } from "jose";
 import type { FetchFn } from "../line/api";
+import type { KVLike } from "../line/recipients";
 import { UpstreamError } from "../upstream";
 import type { ReminderItem } from "./message";
 
@@ -36,6 +37,9 @@ export function decodeDoc(doc: { name: string; fields?: Record<string, FsValue> 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/datastore";
 
+let memoryTokenPromise: Promise<string> | null = null;
+let memoryTokenExpiresAt = 0;
+
 export async function getAccessToken(sa: ServiceAccount, fetchFn: FetchFn, now: Date = new Date()): Promise<string> {
   const key = await importPKCS8(sa.private_key, "RS256");
   const iat = Math.floor(now.getTime() / 1000);
@@ -60,16 +64,69 @@ export async function getAccessToken(sa: ServiceAccount, fetchFn: FetchFn, now: 
   return ((await res.json()) as { access_token: string }).access_token;
 }
 
+export async function getCachedAccessToken(
+  sa: ServiceAccount,
+  fetchFn: FetchFn = (i, init) => fetch(i, init),
+  now: Date = new Date(),
+  kv?: KVLike,
+): Promise<string> {
+  const nowSec = Math.floor(now.getTime() / 1000);
+
+  // 1. Check in-memory module cache (valid if > 120s remaining)
+  if (memoryTokenPromise && memoryTokenExpiresAt > nowSec + 120) {
+    return memoryTokenPromise;
+  }
+
+  // 2. Check KV cache if available
+  if (kv) {
+    try {
+      const kvCached = await kv.get(`gcp_token:${sa.client_email}`);
+      if (kvCached) {
+        const parsed = JSON.parse(kvCached) as { token: string; exp: number };
+        if (parsed.token && parsed.exp > nowSec + 120) {
+          memoryTokenExpiresAt = parsed.exp;
+          memoryTokenPromise = Promise.resolve(parsed.token);
+          return parsed.token;
+        }
+      }
+    } catch {
+      // ignore kv read errors
+    }
+  }
+
+  // 3. Generate new OAuth token via JWT
+  memoryTokenPromise = (async () => {
+    const token = await getAccessToken(sa, fetchFn, now);
+    memoryTokenExpiresAt = nowSec + 3300; // 55 mins
+    if (kv) {
+      await kv.put(
+        `gcp_token:${sa.client_email}`,
+        JSON.stringify({ token, exp: memoryTokenExpiresAt }),
+        { expirationTtl: 3300 },
+      ).catch(() => {});
+    }
+    return token;
+  })();
+
+  return memoryTokenPromise;
+}
+
 const eq = (field: string, value: FsValue) => ({ fieldFilter: { field: { fieldPath: field }, op: "EQUAL", value } });
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
-export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i, init) => fetch(i, init)) {
+export function createFirestoreReader(
+  sa: ServiceAccount,
+  fetchFn: FetchFn = (i, init) => fetch(i, init),
+  kv?: KVLike,
+) {
   const base = `https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents`;
-  let token: Promise<string> | null = null;
+
+  function getToken(): Promise<string> {
+    return getCachedAccessToken(sa, fetchFn, new Date(), kv);
+  }
 
   async function runQuery(parent: string, collectionId: string, where?: object) {
-    token ??= getAccessToken(sa, fetchFn);
-    const accessToken = await token;
+    const accessToken = await getToken();
     let res: Response;
     try {
       res = await fetchFn(`${base}/${parent}:runQuery`, {
@@ -228,8 +285,7 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
         remindTiming?: "normal" | "special";
       },
     ): Promise<void> {
-      token ??= getAccessToken(sa, fetchFn);
-      const accessToken = await token;
+      const accessToken = await getToken();
       const fields: Record<string, FsValue> = {};
       const updateMask: string[] = [];
 
@@ -297,8 +353,7 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
         remindTiming?: "normal" | "special";
       },
     ): Promise<string> {
-      token ??= getAccessToken(sa, fetchFn);
-      const accessToken = await token;
+      const accessToken = await getToken();
       const fields: Record<string, FsValue> = {
         familyId: { stringValue: familyId },
         childId: { stringValue: data.childId },

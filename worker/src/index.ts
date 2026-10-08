@@ -191,18 +191,19 @@ const jwks = createRemoteJWKSet(new URL(GOOGLE_JWKS_URL));
 
 function lineDeps(env: Env, client?: ClaudeLike): LineDeps {
   let firestore: FirestoreClient | undefined;
+  const kv = env.LINE_KV as unknown as KVLike;
   if (env.GCP_SA_KEY) {
     try {
       const sa = JSON.parse(env.GCP_SA_KEY) as ServiceAccount;
-      firestore = createFirestoreReader(sa);
+      firestore = createFirestoreReader(sa, undefined, kv);
     } catch {
       // ignore invalid sa
     }
   }
   return {
-    store: kvRecipientStore(env.LINE_KV as unknown as KVLike),
+    store: kvRecipientStore(kv),
     api: createLineApi(env.LINE_CHANNEL_TOKEN),
-    kv: env.LINE_KV as unknown as KVLike,
+    kv,
     client,
     firestore,
     familyId: env.FAMILY_ID,

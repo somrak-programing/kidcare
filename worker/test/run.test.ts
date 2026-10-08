@@ -4,7 +4,7 @@ import { runDailyReminders } from "../src/reminders/run";
 import { memoryKV } from "./helpers";
 
 const NOW = new Date("2026-10-02T00:00:00Z"); // 07:00 BKK, Fri 2 Oct
-const api = () => ({ profile: vi.fn(), reply: vi.fn(), multicast: vi.fn(async () => {}) });
+const api = () => ({ profile: vi.fn(), reply: vi.fn(), push: vi.fn(async () => {}), multicast: vi.fn(async () => {}) });
 
 async function storeWith(...rs: [string, "pending" | "approved"][]) {
   const s = kvRecipientStore(memoryKV());

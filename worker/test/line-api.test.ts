@@ -12,15 +12,18 @@ test("profile GETs with bearer token", async () => {
   expect((f.calls[0].init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
 });
 
-test("reply and multicast send text messages", async () => {
+test("reply, push and multicast send messages", async () => {
   const f = fakeFetch(() => ok());
   const api = createLineApi("tok", f);
   await api.reply("rt", "hi");
+  await api.push("U1", "เตือน");
   await api.multicast(["U1", "U2"], "นัด");
   expect(f.calls[0].url).toBe("https://api.line.me/v2/bot/message/reply");
   expect(JSON.parse(f.calls[0].init!.body as string)).toEqual({ replyToken: "rt", messages: [{ type: "text", text: "hi" }] });
-  expect(f.calls[1].url).toBe("https://api.line.me/v2/bot/message/multicast");
-  expect(JSON.parse(f.calls[1].init!.body as string)).toEqual({ to: ["U1", "U2"], messages: [{ type: "text", text: "นัด" }] });
+  expect(f.calls[1].url).toBe("https://api.line.me/v2/bot/message/push");
+  expect(JSON.parse(f.calls[1].init!.body as string)).toEqual({ to: "U1", messages: [{ type: "text", text: "เตือน" }] });
+  expect(f.calls[2].url).toBe("https://api.line.me/v2/bot/message/multicast");
+  expect(JSON.parse(f.calls[2].init!.body as string)).toEqual({ to: ["U1", "U2"], messages: [{ type: "text", text: "นัด" }] });
 });
 
 test("multicast with no recipients makes no call", async () => {

@@ -163,7 +163,7 @@ describe("handle", () => {
 
 function lineDeps() {
   const store = kvRecipientStore(memoryKV());
-  const api = { profile: vi.fn(async () => ({ displayName: "แม่" })), reply: vi.fn(async () => {}), multicast: vi.fn(async () => {}) };
+  const api = { profile: vi.fn(async () => ({ displayName: "แม่" })), reply: vi.fn(async () => {}), push: vi.fn(async () => {}), multicast: vi.fn(async () => {}) };
   return { store, api };
 }
 

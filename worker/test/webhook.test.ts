@@ -9,6 +9,7 @@ function api(over: Partial<LineApi> = {}): LineApi {
   return {
     profile: vi.fn(async () => ({ displayName: "แม่" })),
     reply: vi.fn(async () => {}),
+    push: vi.fn(async () => {}),
     multicast: vi.fn(async () => {}),
     ...over,
   };
@@ -396,6 +397,47 @@ describe("handleLineWebhook", () => {
     );
 
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("ขออภัยครับ เกิดข้อผิดพลาดในการบันทึกนัดหมายลงระบบ"));
+  });
+
+  test("direct appointment message 'พรุ่งนี้ 14:30 เอารถไปตั้งศูนย์ที่ปลวกแดง' replies immediately with target options", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    const mockFirestore = {
+      loadChildren: vi.fn().mockResolvedValue([{ id: "child1", name: "วินเทจ", nickname: "วินเทจ" }]),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "message",
+          replyToken: "rt",
+          message: { type: "text", text: "พรุ่งนี้ 14:30 เอารถไปตั้งศูนย์ที่ปลวกแดง" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1", client: {} as any },
+    );
+
+    expect(a.reply).toHaveBeenCalledWith(
+      "rt",
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("เอารถไปตั้งศูนย์ที่ปลวกแดง"),
+        quickReply: expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              action: expect.objectContaining({ label: "✅ บันทึกให้วินเทจ" }),
+            }),
+            expect.objectContaining({
+              action: expect.objectContaining({ label: "👨 บันทึกให้พ่อ" }),
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 });
 

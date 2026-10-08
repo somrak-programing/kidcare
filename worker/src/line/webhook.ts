@@ -75,10 +75,20 @@ async function replyOrPush(
     }
   }
   if (!sent && userId) {
-    const text = typeof message === "string" ? message : message.text;
-    await deps.api.multicast([userId], text).catch(() => {
-      console.error("line multicast failed");
-    });
+    if (deps.api.push) {
+      try {
+        await deps.api.push(userId, message);
+        sent = true;
+      } catch {
+        console.error("line push failed");
+      }
+    }
+    if (!sent) {
+      const text = typeof message === "string" ? message : message.text;
+      await deps.api.multicast([userId], text).catch(() => {
+        console.error("line multicast failed");
+      });
+    }
   }
 }
 
@@ -249,7 +259,26 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
       );
       await deps.kv.put(`user_draft:${userId}`, draftId, { expirationTtl: 600 });
 
-      const children = await deps.firestore.loadChildren(deps.familyId).catch(() => []);
+      let children: Array<{ id: string; name: string; nickname?: string }> = [];
+      if (deps.kv) {
+        const cached = await deps.kv.get(`family_children:${deps.familyId}`);
+        if (cached) {
+          try {
+            children = JSON.parse(cached);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (!children.length && deps.firestore) {
+        children = await deps.firestore.loadChildren(deps.familyId).catch(() => []);
+        if (children.length > 0 && deps.kv) {
+          await deps.kv.put(`family_children:${deps.familyId}`, JSON.stringify(children), {
+            expirationTtl: 86400,
+          }).catch(() => {});
+        }
+      }
 
       const eventLines = events.map((e, idx) => {
         const dateStr = thaiDay(e.date);

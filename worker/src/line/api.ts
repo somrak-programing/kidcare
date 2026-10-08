@@ -25,6 +25,7 @@ export type LineMessage =
 export interface LineApi {
   profile(userId: string): Promise<{ displayName: string }>;
   reply(replyToken: string, message: LineMessage): Promise<void>;
+  push(to: string, message: LineMessage): Promise<void>;
   multicast(to: string[], text: string): Promise<void>;
 }
 
@@ -43,7 +44,11 @@ export function createLineApi(token: string, fetchFn: FetchFn = (i, init) => fet
     } catch {
       throw new UpstreamError(`LINE ${path} network error`);
     }
-    if (!res.ok) throw new UpstreamError(`LINE ${path} ${res.status}`);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error(`LINE ${path} ${res.status}: ${errText}`);
+      throw new UpstreamError(`LINE ${path} ${res.status}`);
+    }
     return res;
   }
   return {
@@ -55,6 +60,10 @@ export function createLineApi(token: string, fetchFn: FetchFn = (i, init) => fet
     async reply(replyToken, message) {
       const msgObj = typeof message === "string" ? { type: "text", text: message } : message;
       await call("/message/reply", { method: "POST", body: { replyToken, messages: [msgObj] } });
+    },
+    async push(to, message) {
+      const msgObj = typeof message === "string" ? { type: "text", text: message } : message;
+      await call("/message/push", { method: "POST", body: { to, messages: [msgObj] } });
     },
     async multicast(to, text) {
       for (let i = 0; i < to.length; i += MULTICAST_MAX) {
