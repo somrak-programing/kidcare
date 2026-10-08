@@ -57,6 +57,36 @@ describe("parseThaiEvents", () => {
       }),
     ]);
   });
+
+  test("extracts directly typed message 'พรุ่งนี้เอารถยอมตั้งศูนย์ที่ปลวกแดงเวลา 14.00 น.'", () => {
+    const events = parseThaiEvents("พรุ่งนี้เอารถยอมตั้งศูนย์ที่ปลวกแดงเวลา 14.00 น.", "2026-10-08");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      title: "เอารถยอมตั้งศูนย์ที่ปลวกแดง",
+      date: "2026-10-09",
+      time: "14:00",
+    });
+  });
+
+  test("extracts colloquial times like 9 โมง, บ่ายสอง, and relative weekdays like วันศุกร์นี้", () => {
+    // 2026-10-08 is Thursday. วันศุกร์นี้ = 2026-10-09 (Friday)
+    const friEvents = parseThaiEvents("วันศุกร์นี้ บ่ายสอง มีนัดตัดผม", "2026-10-08");
+    expect(friEvents).toHaveLength(1);
+    expect(friEvents[0]).toMatchObject({
+      title: "มีนัดตัดผม",
+      date: "2026-10-09",
+      time: "14:00",
+    });
+
+    const morningEvents = parseThaiEvents("พรุ่งนี้ 9 โมง พาแม่ไปหาหมอ", "2026-10-08");
+    expect(morningEvents).toHaveLength(1);
+    expect(morningEvents[0]).toMatchObject({
+      title: "พาแม่ไปหาหมอ",
+      date: "2026-10-09",
+      time: "09:00",
+      place: "โรงพยาบาล",
+    });
+  });
 });
 
 describe("buildEventParams", () => {

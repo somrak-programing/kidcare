@@ -127,38 +127,53 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
 
     async loadUpcomingSummary(familyId: string, fromDate: string, limit = 5): Promise<ReminderItem[]> {
       const fam = `families/${familyId}`;
-      const children = await runQuery(fam, "children");
-      const nameOf = new Map(children.map((c) => [c.id, str(c.nickname) ?? str(c.name) ?? ""]));
       const items: ReminderItem[] = [];
+      const nameOf = new Map<string, string>();
 
-      for (const c of children) {
-        const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
-        for (const d of doses) {
-          const due = str(d.dueDate);
-          if (!due || due < fromDate) continue;
-          const item: ReminderItem = { date: due, childName: nameOf.get(c.id)!, title: `${d.vaccineName} เข็ม ${d.doseNo}` };
-          if (str(d.place)) item.place = str(d.place);
-          items.push(item);
+      try {
+        const children = await runQuery(fam, "children").catch(() => []);
+        for (const c of children) {
+          nameOf.set(c.id, str(c.nickname) ?? str(c.name) ?? "");
         }
+
+        // Query doses for all children in parallel
+        await Promise.allSettled(
+          children.map(async (c) => {
+            const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
+            for (const d of doses) {
+              const due = str(d.dueDate);
+              if (!due || due < fromDate) continue;
+              const item: ReminderItem = { date: due, childName: nameOf.get(c.id) || "ลูก", title: `${d.vaccineName} เข็ม ${d.doseNo}` };
+              if (str(d.place)) item.place = str(d.place);
+              items.push(item);
+            }
+          }),
+        );
+      } catch (err) {
+        console.error("loadUpcomingSummary children/doses error:", err);
       }
 
-      const appts = await runQuery(fam, "appointments", eq("done", { booleanValue: false }));
-      for (const a of appts) {
-        const date = str(a.date);
-        if (!date || date < fromDate) continue;
-        const cId = String(a.childId ?? "");
-        let personName = nameOf.get(cId);
-        if (!personName) {
-          if (cId === "parent:dad" || cId === "dad") personName = "คุณพ่อ";
-          else if (cId === "parent:mom" || cId === "mom") personName = "คุณแม่";
-          else if (cId === "family") personName = "ครอบครัว";
-          else personName = "";
+      try {
+        const appts = await runQuery(fam, "appointments", eq("done", { booleanValue: false })).catch(() => []);
+        for (const a of appts) {
+          const date = str(a.date);
+          if (!date || date < fromDate) continue;
+          const cId = String(a.childId ?? "");
+          let personName = nameOf.get(cId);
+          if (!personName) {
+            if (cId === "parent:dad" || cId === "dad") personName = "คุณพ่อ";
+            else if (cId === "parent:mom" || cId === "mom") personName = "คุณแม่";
+            else if (cId === "family") personName = "ครอบครัว";
+            else personName = "";
+          }
+          const item: ReminderItem = { date, childName: personName, title: String(a.purpose ?? "") };
+          if (str(a.time)) item.time = str(a.time);
+          if (str(a.place)) item.place = str(a.place);
+          if (a.remindTiming === "special" || a.remindTiming === "normal") item.remindTiming = a.remindTiming;
+          items.push(item);
         }
-        const item: ReminderItem = { date, childName: personName, title: String(a.purpose ?? "") };
-        if (str(a.time)) item.time = str(a.time);
-        if (str(a.place)) item.place = str(a.place);
-        if (a.remindTiming === "special" || a.remindTiming === "normal") item.remindTiming = a.remindTiming;
-        items.push(item);
+      } catch (err) {
+        console.error("loadUpcomingSummary appointments error:", err);
       }
 
       items.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));

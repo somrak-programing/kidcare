@@ -335,5 +335,67 @@ describe("handleLineWebhook", () => {
     expect(await kv.get("user_draft:U1")).toBeNull();
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("บันทึกนัดหมายของคุณพ่อ"));
   });
+
+  test("user querying upcoming appointments with 'ดูนัดหมาย' or 'สรุปนัด' replies with upcoming list", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    const mockFirestore = {
+      loadUpcomingSummary: vi.fn().mockResolvedValue([
+        { date: "2026-10-09", childName: "คุณพ่อ", title: "เอารถยอมตั้งศูนย์ที่ปลวกแดง", time: "14:00" },
+      ]),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "message",
+          replyToken: "rt",
+          message: { type: "text", text: "ไม่เห็นมีสรุปรายการค้างนัดหมายเลย" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1", client: {} as any },
+    );
+
+    expect(mockFirestore.loadUpcomingSummary).toHaveBeenCalledWith("fam1", expect.any(String), 10);
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("รายการนัดหมายที่รออยู่เร็วๆ นี้"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("เอารถยอมตั้งศูนย์ที่ปลวกแดง"));
+  });
+
+  test("executeConfirmation catches Firestore errors and replies with friendly message", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    await kv.put("draft:dErr", JSON.stringify({
+      events: [{ title: "นัดพบครู", date: "2026-10-10", time: null, place: null, notes: null }],
+      familyId: "fam1",
+      createdAt: "x",
+      targetChildId: "parent:dad",
+    }));
+
+    const mockFirestore = {
+      loadChildren: vi.fn().mockResolvedValue([]),
+      createAppointment: vi.fn().mockRejectedValue(new Error("Firestore database connection failed")),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "postback",
+          replyToken: "rt",
+          postback: { data: "action=confirm&id=dErr&childId=parent:dad&timing=normal" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1" },
+    );
+
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("ขออภัยครับ เกิดข้อผิดพลาดในการบันทึกนัดหมายลงระบบ"));
+  });
 });
 

@@ -37,8 +37,8 @@ test("no approved recipients → does not even read Firestore", async () => {
 test("evening run: queries tomorrow only and notifies special reminders", async () => {
   const reader = {
     loadReminderItems: vi.fn(async () => [
-      { date: "2026-10-03", childName: "คุณพ่อ", title: "ทำบุญตักบาตร", remindTiming: "special", place: "ที่ทำงาน" },
-      { date: "2026-10-03", childName: "น้องมะลิ", title: "เปิดเทอม", remindTiming: "normal" },
+      { date: "2026-10-03", childName: "คุณพ่อ", title: "ทำบุญตักบาตร", remindTiming: "special" as const, place: "ที่ทำงาน" },
+      { date: "2026-10-03", childName: "น้องมะลิ", title: "เปิดเทอม", remindTiming: "normal" as const },
     ]),
   };
   const a = api();

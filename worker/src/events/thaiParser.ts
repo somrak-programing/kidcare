@@ -39,6 +39,17 @@ const THAI_MONTHS: Record<string, number> = {
   "ธ.ค": 12,
 };
 
+const WEEKDAY_NAMES: Record<string, number> = {
+  อาทิตย์: 0,
+  จันทร์: 1,
+  อังคาร: 2,
+  พุธ: 3,
+  พฤหัส: 4,
+  พฤหัสบดี: 4,
+  ศุกร์: 5,
+  เสาร์: 6,
+};
+
 // Regex to find explicit dates like "วันพุธ ที่ 7 ตุลาคมนี้", "29 ตุลาคม", "15 พ.ย. 69", "วันที่ 5 มี.ค."
 const DATE_REGEX =
   /(?:วัน(?:ที่|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์)?)?\s*(?:ที่\s*:?\s*)?(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม|ม\.ค\.?|ก\.พ\.?|มี\.ค\.?|เม\.ย\.?|พ\.ค\.?|มิ\.ย\.?|ก\.ค\.?|ส\.ค\.?|ก\.ย\.?|ต\.ค\.?|พ\.ย\.?|ธ\.ค\.?)(?:\s*(?:พ\.?ศ\.?|ค\.?ศ\.?)?\s*(\d{2,4}))?/i;
@@ -49,12 +60,81 @@ const SLASH_DATE_REGEX = /(?:วัน(?:ที่)?\s*:?\s*)?(\d{1,2})\/(\d{1,2
 // Regex for relative dates like "ในวันพรุ่งนี้", "พรุ่งนี้", "มะรืนนี้", "วันนี้"
 const RELATIVE_DATE_REGEX = /(?:ใน\s*)?(?:วัน\s*)?(พรุ่งนี้|มะรืนนี้|มะรืน|วันนี้)/i;
 
+// Regex for relative weekdays like "วันศุกร์นี้", "ศุกร์นี้", "วันจันทร์หน้า", "เสาร์นี้"
+const RELATIVE_WEEKDAY_REGEX =
+  /(?:ใน\s*)?(?:วัน\s*)?(อาทิตย์|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์)\s*(นี้|หน้า)/i;
+
 const TIME_REGEX = /(?:เวลา\s*)?(\d{1,2})[.:](\d{2})\s*(?:น\.|นาฬิกา)?/i;
 
 function addDaysToIso(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+export function extractThaiTime(text: string): { time: string | null; matchedText: string | null } {
+  // 1. Standard colon/dot time: 14:00, 14.00 น., 09:30, เวลา 14.00 น.
+  const stdMatch = text.match(/(?:เวลา\s*)?(\d{1,2})[.:](\d{2})\s*(?:น\.|นาฬิกา)?/i);
+  if (stdMatch) {
+    const h = String(Number(stdMatch[1])).padStart(2, "0");
+    const m = stdMatch[2];
+    return { time: `${h}:${m}`, matchedText: stdMatch[0] };
+  }
+
+  // 2. Whole hour with น. / นาฬิกา: 14 น., 9 นาฬิกา, เวลา 10 น.
+  const hourMatch = text.match(/(?:เวลา\s*)?(\d{1,2})\s*(?:น\.|นาฬิกา)/i);
+  if (hourMatch) {
+    const h = String(Number(hourMatch[1])).padStart(2, "0");
+    return { time: `${h}:00`, matchedText: hourMatch[0] };
+  }
+
+  // 3. Noon: เที่ยง / เที่ยงตรง / เที่ยงครึ่ง
+  if (/เที่ยงครึ่ง/i.test(text)) return { time: "12:30", matchedText: "เที่ยงครึ่ง" };
+  if (/เที่ยง(?:ตรง)?/i.test(text)) {
+    const m = text.match(/เที่ยง(?:ตรง)?/i)!;
+    return { time: "12:00", matchedText: m[0] };
+  }
+
+  // 4. Afternoon: บ่ายโมง, บ่ายโมงครึ่ง, บ่าย 1, บ่าย 2, บ่ายสอง, บ่ายสองครึ่ง, บ่าย 3, บ่ายสาม, บ่าย 4, บ่ายสี่
+  const afternoonMatch = text.match(/บ่าย\s*(โมง|1|หนึ่ง|2|สอง|3|สาม|4|สี่|5|ห้า)?\s*(ครึ่ง)?/i);
+  if (afternoonMatch && afternoonMatch[0].trim() !== "บ่าย") {
+    const digitOrWord = afternoonMatch[1] || "โมง";
+    let hour = 13;
+    if (digitOrWord === "2" || digitOrWord === "สอง") hour = 14;
+    else if (digitOrWord === "3" || digitOrWord === "สาม") hour = 15;
+    else if (digitOrWord === "4" || digitOrWord === "สี่") hour = 16;
+    else if (digitOrWord === "5" || digitOrWord === "ห้า") hour = 17;
+    const minute = afternoonMatch[2] ? "30" : "00";
+    return { time: `${hour}:${minute}`, matchedText: afternoonMatch[0] };
+  }
+
+  // 5. Late afternoon: 4 โมงเย็น, 5 โมงเย็น, 6 โมงเย็น
+  const eveningHourMatch = text.match(/(\d{1,2})\s*โมงเย็น\s*(ครึ่ง)?/i);
+  if (eveningHourMatch) {
+    let hour = Number(eveningHourMatch[1]);
+    if (hour <= 6) hour += 12;
+    const minute = eveningHourMatch[2] ? "30" : "00";
+    return { time: `${String(hour).padStart(2, "0")}:${minute}`, matchedText: eveningHourMatch[0] };
+  }
+
+  // 6. Night: 1 ทุ่ม, ทุ่มนึง, 2 ทุ่ม, 3 ทุ่ม, 4 ทุ่ม, ทุ่มครึ่ง
+  const nightMatch = text.match(/(?:(\d{1,2})\s*ทุ่ม|ทุ่ม(?:นึง|ตรง)?)\s*(ครึ่ง)?/i);
+  if (nightMatch) {
+    const digit = nightMatch[1] ? Number(nightMatch[1]) : 1;
+    const hour = 18 + digit;
+    const minute = nightMatch[2] ? "30" : "00";
+    return { time: `${String(hour).padStart(2, "0")}:${minute}`, matchedText: nightMatch[0] };
+  }
+
+  // 7. Morning: 6 โมง, 7 โมง, 8 โมง, 9 โมง, 10 โมง, 11 โมง, 9 โมงเช้า, 9 โมงครึ่ง
+  const morningMatch = text.match(/(\d{1,2})\s*โมง(?:เช้า)?\s*(ครึ่ง)?/i);
+  if (morningMatch) {
+    const hour = String(Number(morningMatch[1])).padStart(2, "0");
+    const minute = morningMatch[2] ? "30" : "00";
+    return { time: `${hour}:${minute}`, matchedText: morningMatch[0] };
+  }
+
+  return { time: null, matchedText: null };
 }
 
 function inferPlace(text: string): string {
@@ -75,6 +155,7 @@ function cleanTitle(raw: string): string {
     .replace(/แจ้งเตือน/gi, "")
     .replace(/ที่จะมาถึง(?:ใน)?(?:วัน)?(?:พรุ่งนี้|วันนี้|มะรืนนี้)?/gi, "")
     .replace(/(?:ใน)?(?:วัน)?(?:พรุ่งนี้|วันนี้|มะรืนนี้)/gi, "")
+    .replace(/(?:ใน)?(?:วัน)?(?:อาทิตย์|จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์)\s*(?:นี้|หน้า)/gi, "")
     .replace(/[>]{2,}/g, " ")
     .replace(/วัดสุดท้าย/g, "วันสุดท้าย") // fix common typo
     .trim();
@@ -122,12 +203,15 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
     const dateMatch = sec.match(DATE_REGEX);
     const slashMatch = !dateMatch ? sec.match(SLASH_DATE_REGEX) : null;
     const relMatch = !dateMatch && !slashMatch ? sec.match(RELATIVE_DATE_REGEX) : null;
+    const relWeekdayMatch = !dateMatch && !slashMatch && !relMatch ? sec.match(RELATIVE_WEEKDAY_REGEX) : null;
 
-    if (!dateMatch && !slashMatch && !relMatch) continue;
+    if (!dateMatch && !slashMatch && !relMatch && !relWeekdayMatch) continue;
 
     let isoDate = "";
+    let matchedDateText = "";
 
     if (dateMatch) {
+      matchedDateText = dateMatch[0];
       const day = Number(dateMatch[1]);
       const monthName = dateMatch[2].replace(/\s+/g, "");
       const month = THAI_MONTHS[monthName];
@@ -144,6 +228,7 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
       }
       isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     } else if (slashMatch) {
+      matchedDateText = slashMatch[0];
       const day = Number(slashMatch[1]);
       const month = Number(slashMatch[2]);
       let rawY = Number(slashMatch[3]);
@@ -152,35 +237,58 @@ export function parseThaiEvents(text: string, todayIso: string): ExtractedEvent[
       let year = rawY > 2400 ? rawY - 543 : rawY;
       isoDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     } else if (relMatch) {
+      matchedDateText = relMatch[0];
       const relWord = relMatch[1];
       let offset = 0;
       if (relWord.includes("พรุ่งนี้")) offset = 1;
       else if (relWord.includes("มะรืน")) offset = 2;
       else if (relWord.includes("วันนี้")) offset = 0;
       isoDate = addDaysToIso(todayIso, offset);
+    } else if (relWeekdayMatch) {
+      matchedDateText = relWeekdayMatch[0];
+      const weekdayName = relWeekdayMatch[1];
+      const modifier = relWeekdayMatch[2]; // "นี้" หรือ "หน้า"
+      const targetDOW = WEEKDAY_NAMES[weekdayName] ?? 0;
+      const todayDOW = new Date(todayIso + "T00:00:00Z").getUTCDay();
+      let diff = (targetDOW - todayDOW + 7) % 7;
+      if (modifier === "หน้า") {
+        diff = diff === 0 ? 7 : diff + 7;
+      } else if (diff === 0 && todayDOW === targetDOW) {
+        diff = 0;
+      }
+      isoDate = addDaysToIso(todayIso, diff);
     }
 
     if (!isoDate) continue;
 
-    // Extract time if any
-    let time: string | null = null;
-    const timeMatch = sec.match(TIME_REGEX);
-    if (timeMatch) {
-      const h = String(Number(timeMatch[1])).padStart(2, "0");
-      const m = timeMatch[2];
-      time = `${h}:${m}`;
-    }
+    // Extract time using enhanced extractor
+    const { time, matchedText: matchedTimeText } = extractThaiTime(sec);
 
     // Extract title
     let title = "";
     if (dateMatch) {
       const dateIdx = sec.indexOf(dateMatch[0]);
       const beforeDate = sec.slice(0, dateIdx).trim();
-      if (beforeDate) title = cleanTitle(beforeDate);
+      if (beforeDate && cleanTitle(beforeDate).length >= 3) {
+        title = cleanTitle(beforeDate);
+      }
     } else if (slashMatch) {
       const dateIdx = sec.indexOf(slashMatch[0]);
       const beforeDate = sec.slice(0, dateIdx).trim();
-      if (beforeDate) title = cleanTitle(beforeDate);
+      if (beforeDate && cleanTitle(beforeDate).length >= 3) {
+        title = cleanTitle(beforeDate);
+      }
+    }
+
+    if (!title) {
+      let titleCandidate = sec;
+      if (matchedDateText) {
+        titleCandidate = titleCandidate.replace(matchedDateText, " ");
+      }
+      if (matchedTimeText) {
+        titleCandidate = titleCandidate.replace(matchedTimeText, " ");
+      }
+      title = cleanTitle(titleCandidate);
     }
 
     if (!title || title.length < 3) {

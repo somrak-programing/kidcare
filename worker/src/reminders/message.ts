@@ -68,6 +68,6 @@ export function buildEveningReminderText(items: ReminderItem[], tomorrow: string
 export function formatUpcomingSummary(items: ReminderItem[], max = 5): string {
   const deduped = dedupeItems(items).slice(0, max);
   if (!deduped.length) return "ยังไม่มีนัดหมายอื่นที่รออยู่ครับ";
-  const lines = deduped.map((i) => `• ${i.childName}: ${i.title} (${thaiDay(i.date)}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""})`);
+  const lines = deduped.map((i) => `• ${i.childName ? `${i.childName}: ` : ""}${i.title} (${thaiDay(i.date)}${i.time ? ` ${i.time} น.` : ""}${i.place ? ` · ${i.place}` : ""})`);
   return lines.join("\n");
 }

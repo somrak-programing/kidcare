@@ -13,6 +13,27 @@ export const REPLY_NO_EVENTS = "ไม่พบวันนัดหมายห
 export const REPLY_DRAFT_EXPIRED = "ขออภัยครับ รายการนี้หมดอายุแล้ว (เกิน 10 นาที) กรุณาส่งข้อความใหม่อีกครั้งนะครับ";
 export const REPLY_CANCELLED = "ยกเลิกการบันทึกเรียบร้อยครับ 👌";
 
+export function isUpcomingQuery(text: string): boolean {
+  const clean = text.trim().toLowerCase();
+  if (
+    /^(สรุป|ดู|เช็ค|ตรวจ|ขอ)?\s*(นัด|นัดหมาย|รายการนัด|ตารางนัด|ค้างนัด|รายการค้าง)/i.test(clean) ||
+    /มีนัด(อะไร|บ้าง|ไหน)/i.test(clean) ||
+    /นัด(อะไร|บ้าง|ไหน)/i.test(clean) ||
+    clean === "นัด" ||
+    clean === "นัดหมาย" ||
+    clean === "สรุป" ||
+    clean.includes("ค้างนัด") ||
+    clean.includes("สรุปนัด") ||
+    clean.includes("ดูนัด")
+  ) {
+    // Exclude if it looks like adding a new appointment (contains dates or times)
+    if (!/พรุ่งนี้|มะรืน|วันที่|\d{1,2}\s*(?:ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค)|\d{1,2}\/\d{1,2}|เวลา\s*\d|\d{1,2}[.:]\d{2}|\d{1,2}\s*โมง/i.test(clean)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export interface DraftEvents {
   events: ExtractedEvent[];
   familyId: string;
@@ -102,12 +123,12 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
 
           // 1. ตอบรูปแบบการเตือน: พิเศษ / ปกติ
           if (lower.includes("พิเศษ")) {
-            await executeConfirmation(pendingDraftId, undefined, "special", ev.replyToken, deps, now);
+            await executeConfirmation(pendingDraftId, undefined, "special", ev.replyToken, deps, now, userId);
             await deps.kv.delete(`user_draft:${userId}`);
             continue;
           }
           if (lower.includes("ปกติ")) {
-            await executeConfirmation(pendingDraftId, undefined, "normal", ev.replyToken, deps, now);
+            await executeConfirmation(pendingDraftId, undefined, "normal", ev.replyToken, deps, now, userId);
             await deps.kv.delete(`user_draft:${userId}`);
             continue;
           }
@@ -182,6 +203,25 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           }
         } else {
           await deps.kv.delete(`user_draft:${userId}`);
+        }
+      }
+
+      // Check if user is asking to view pending/upcoming appointments
+      if (isUpcomingQuery(text)) {
+        if (deps.firestore?.loadUpcomingSummary) {
+          const today = bangkokDate(now());
+          const upcoming = await deps.firestore.loadUpcomingSummary(deps.familyId, today, 10).catch(() => []);
+          const summaryText = formatUpcomingSummary(upcoming, 10);
+          const replyMsg = upcoming.length > 0
+            ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}\n\n💡 สามารถพิมพ์เพิ่มนัดหมายใหม่ เช่น 'พรุ่งนี้ 14:00 เอารถไปตั้งศูนย์' ได้ตลอดเวลาครับ`
+            : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉\n\n(หากต้องการเพิ่มนัดหมาย สามารถพิมพ์รายละเอียด เช่น 'พรุ่งนี้ 10:00 ไปหาหมอ' หรือส่งข้อความจากโรงเรียนมาได้เลยครับ)";
+
+          if (ev.replyToken) {
+            await deps.api.reply(ev.replyToken, replyMsg).catch(() => {
+              console.error("line reply failed");
+            });
+          }
+          continue;
         }
       }
 
@@ -410,7 +450,25 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
 
       if (action === "confirm") {
         const timing = params.get("timing") === "special" ? "special" : "normal";
-        await executeConfirmation(draftId, targetChildId, timing, ev.replyToken, deps, now);
+        await executeConfirmation(draftId, targetChildId, timing, ev.replyToken, deps, now, userId);
+        continue;
+      }
+
+      if (action === "view_upcoming") {
+        if (deps.firestore?.loadUpcomingSummary && deps.familyId) {
+          const today = bangkokDate(now());
+          const upcoming = await deps.firestore.loadUpcomingSummary(deps.familyId, today, 10).catch(() => []);
+          const summaryText = formatUpcomingSummary(upcoming, 10);
+          const replyMsg = upcoming.length > 0
+            ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}`
+            : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉";
+
+          if (ev.replyToken) {
+            await deps.api.reply(ev.replyToken, replyMsg).catch(() => {
+              console.error("line reply failed");
+            });
+          }
+        }
         continue;
       }
     }
@@ -424,6 +482,7 @@ async function executeConfirmation(
   replyToken: string | undefined,
   deps: WebhookDeps,
   now: () => Date,
+  userId?: string,
 ): Promise<void> {
   if (!deps.kv || !deps.firestore) return;
   const raw = await deps.kv.get(`draft:${draftId}`);
@@ -441,6 +500,7 @@ async function executeConfirmation(
     draft = JSON.parse(raw);
   } catch {
     await deps.kv.delete(`draft:${draftId}`);
+    if (userId) await deps.kv.delete(`user_draft:${userId}`).catch(() => {});
     return;
   }
 
@@ -458,37 +518,48 @@ async function executeConfirmation(
   let updatedCount = 0;
   let createdCount = 0;
 
-  for (const cId of childrenToAssign) {
-    for (const event of draft.events) {
-      const existing = deps.firestore.findMatchingAppointment
-        ? await deps.firestore.findMatchingAppointment(draft.familyId, cId, event.date, event.title)
-        : null;
+  try {
+    for (const cId of childrenToAssign) {
+      for (const event of draft.events) {
+        const existing = deps.firestore.findMatchingAppointment
+          ? await deps.firestore.findMatchingAppointment(draft.familyId, cId, event.date, event.title)
+          : null;
 
-      if (existing && deps.firestore.updateAppointment) {
-        await deps.firestore.updateAppointment(draft.familyId, existing.id, {
-          time: event.time,
-          place: event.place,
-          purpose: event.title,
-          notes: event.notes,
-          remindTiming: timing,
-        });
-        updatedCount++;
-      } else {
-        await deps.firestore.createAppointment(draft.familyId, {
-          childId: cId,
-          date: event.date,
-          time: event.time,
-          place: event.place,
-          purpose: event.title,
-          notes: event.notes,
-          remindTiming: timing,
-        });
-        createdCount++;
+        if (existing && deps.firestore.updateAppointment) {
+          await deps.firestore.updateAppointment(draft.familyId, existing.id, {
+            time: event.time,
+            place: event.place,
+            purpose: event.title,
+            notes: event.notes,
+            remindTiming: timing,
+          });
+          updatedCount++;
+        } else {
+          await deps.firestore.createAppointment(draft.familyId, {
+            childId: cId,
+            date: event.date,
+            time: event.time,
+            place: event.place,
+            purpose: event.title,
+            notes: event.notes,
+            remindTiming: timing,
+          });
+          createdCount++;
+        }
       }
     }
+  } catch (err) {
+    console.error("executeConfirmation save error:", err instanceof Error ? err.message : String(err));
+    if (replyToken) {
+      await deps.api.reply(replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการบันทึกนัดหมายลงระบบ กรุณาลองใหม่อีกครั้งครับ").catch(() => {
+        console.error("line reply failed");
+      });
+    }
+    return;
   }
 
   await deps.kv.delete(`draft:${draftId}`);
+  if (userId) await deps.kv.delete(`user_draft:${userId}`).catch(() => {});
 
   let targetLabel = "";
   if (childIdToUse === "parent:dad") targetLabel = "ของคุณพ่อ ";
@@ -519,16 +590,16 @@ async function executeConfirmation(
       if (allUpcoming.length > 0) {
         upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
       }
-    } catch {
-      // Ignore error in upcoming summary
+    } catch (err) {
+      console.error("upcoming summary in confirmation error:", err);
     }
   }
 
   const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}${upcomingSection}`;
 
   if (replyToken) {
-    await deps.api.reply(replyToken, successMsg).catch(() => {
-      console.error("line reply failed");
+    await deps.api.reply(replyToken, successMsg).catch((err) => {
+      console.error("line reply failed:", err instanceof Error ? err.message : String(err));
     });
   }
 }
