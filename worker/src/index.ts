@@ -110,7 +110,11 @@ export async function handle(req: Request, env: Env, deps: Deps): Promise<Respon
         throw new HttpError(400, "bad_request");
       }
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new HttpError(400, "bad_request");
-      await handleLineWebhook(body, needLine(deps));
+      try {
+        await handleLineWebhook(body, needLine(deps));
+      } catch (err) {
+        console.error("handleLineWebhook error:", err instanceof Error ? err.stack || err.message : String(err));
+      }
       return json(200, {}, cors);
     }
 

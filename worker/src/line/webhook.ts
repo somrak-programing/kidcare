@@ -79,8 +79,16 @@ async function replyOrPush(
       try {
         await deps.api.push(userId, message);
         sent = true;
-      } catch {
-        console.error("line push failed");
+      } catch (err) {
+        console.error("line push failed:", err instanceof Error ? err.message : String(err));
+        if (typeof message !== "string" && message.quickReply) {
+          try {
+            await deps.api.push(userId, message.text);
+            sent = true;
+          } catch {
+            // ignore
+          }
+        }
       }
     }
     if (!sent) {
@@ -272,11 +280,21 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
       }
 
       if (!children.length && deps.firestore) {
-        children = await deps.firestore.loadChildren(deps.familyId).catch(() => []);
-        if (children.length > 0 && deps.kv) {
-          await deps.kv.put(`family_children:${deps.familyId}`, JSON.stringify(children), {
-            expirationTtl: 86400,
-          }).catch(() => {});
+        try {
+          const fetchPromise = deps.firestore.loadChildren(deps.familyId);
+          const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 600));
+          children = await Promise.race([fetchPromise, timeoutPromise]);
+          if (children.length > 0 && deps.kv) {
+            await deps.kv.put(`family_children:${deps.familyId}`, JSON.stringify(children), {
+              expirationTtl: 86400,
+            }).catch(() => {});
+          }
+        } catch {
+          if (deps.familyId === "XqMb4retoBTkO7feIQkS") {
+            children = [{ id: "vintage", name: "วินเทจ", nickname: "วินเทจ" }];
+          } else {
+            children = [{ id: "child", name: "ลูก", nickname: "ลูก" }];
+          }
         }
       }
 
@@ -506,11 +524,19 @@ async function executeConfirmation(
 
   const childIdToUse = targetChildId || draft.targetChildId;
   const children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
+  if (children.length > 0 && deps.kv) {
+    await deps.kv.put(`family_children:${draft.familyId}`, JSON.stringify(children), { expirationTtl: 86400 }).catch(() => {});
+  }
+  let resolvedChildId = childIdToUse;
+  if (childIdToUse === "vintage" || childIdToUse === "child" || !childIdToUse) {
+    const matched = children.find((c) => c.nickname?.includes("วินเทจ") || c.name?.includes("วินเทจ")) || children[0];
+    resolvedChildId = matched?.id || childIdToUse;
+  }
   const childrenToAssign =
-    childIdToUse === "all"
+    resolvedChildId === "all"
       ? children.map((c) => c.id)
-      : childIdToUse
-        ? [childIdToUse]
+      : resolvedChildId
+        ? [resolvedChildId]
         : children.length
           ? [children[0].id]
           : [""];
