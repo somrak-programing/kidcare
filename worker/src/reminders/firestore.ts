@@ -273,7 +273,11 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       } catch {
         throw new UpstreamError("firestore network error");
       }
-      if (!res.ok) throw new UpstreamError(`firestore ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`firestore updateAppointment failed ${res.status}:`, errBody);
+        throw new UpstreamError(`firestore ${res.status}`);
+      }
     },
 
     async createAppointment(
@@ -312,7 +316,11 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       } catch {
         throw new UpstreamError("firestore network error");
       }
-      if (!res.ok) throw new UpstreamError(`firestore ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`firestore createAppointment failed ${res.status}:`, errBody);
+        throw new UpstreamError(`firestore ${res.status}`);
+      }
       const json = (await res.json()) as { name: string };
       return json.name.split("/").pop()!;
     },
