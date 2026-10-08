@@ -131,31 +131,18 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
       const nameOf = new Map<string, string>();
 
       try {
-        const children = await runQuery(fam, "children").catch(() => []);
-        for (const c of children) {
+        // Query children and appointments concurrently for maximum speed
+        const [childrenRes, apptsRes] = await Promise.all([
+          runQuery(fam, "children").catch(() => []),
+          runQuery(fam, "appointments", eq("done", { booleanValue: false })).catch(() => []),
+        ]);
+
+        for (const c of childrenRes) {
           nameOf.set(c.id, str(c.nickname) ?? str(c.name) ?? "");
         }
 
-        // Query doses for all children in parallel
-        await Promise.allSettled(
-          children.map(async (c) => {
-            const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
-            for (const d of doses) {
-              const due = str(d.dueDate);
-              if (!due || due < fromDate) continue;
-              const item: ReminderItem = { date: due, childName: nameOf.get(c.id) || "ลูก", title: `${d.vaccineName} เข็ม ${d.doseNo}` };
-              if (str(d.place)) item.place = str(d.place);
-              items.push(item);
-            }
-          }),
-        );
-      } catch (err) {
-        console.error("loadUpcomingSummary children/doses error:", err);
-      }
-
-      try {
-        const appts = await runQuery(fam, "appointments", eq("done", { booleanValue: false })).catch(() => []);
-        for (const a of appts) {
+        // Add upcoming appointments first
+        for (const a of apptsRes) {
           const date = str(a.date);
           if (!date || date < fromDate) continue;
           const cId = String(a.childId ?? "");
@@ -172,8 +159,26 @@ export function createFirestoreReader(sa: ServiceAccount, fetchFn: FetchFn = (i,
           if (a.remindTiming === "special" || a.remindTiming === "normal") item.remindTiming = a.remindTiming;
           items.push(item);
         }
+
+        // Query vaccine doses for all children in parallel with a strict 1.5s timeout
+        if (childrenRes.length > 0) {
+          const timeoutDoses = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+          const fetchDoses = Promise.allSettled(
+            childrenRes.map(async (c) => {
+              const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
+              for (const d of doses) {
+                const due = str(d.dueDate);
+                if (!due || due < fromDate) continue;
+                const item: ReminderItem = { date: due, childName: nameOf.get(c.id) || "ลูก", title: `${d.vaccineName} เข็ม ${d.doseNo}` };
+                if (str(d.place)) item.place = str(d.place);
+                items.push(item);
+              }
+            }),
+          );
+          await Promise.race([fetchDoses, timeoutDoses]);
+        }
       } catch (err) {
-        console.error("loadUpcomingSummary appointments error:", err);
+        console.error("loadUpcomingSummary error:", err);
       }
 
       items.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "") || a.childName.localeCompare(b.childName));

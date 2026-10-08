@@ -3,7 +3,7 @@ import { extractEvents } from "../events/extract";
 import type { ExtractedEvent } from "../events/schema";
 import type { FirestoreClient } from "../reminders/firestore";
 import { bangkokDate, formatUpcomingSummary, thaiDay } from "../reminders/message";
-import type { LineApi, LineQuickReplyItem } from "./api";
+import type { LineApi, LineMessage, LineQuickReplyItem } from "./api";
 import type { KVLike, RecipientStore } from "./recipients";
 
 export const REPLY_PENDING = "ขอบคุณที่เพิ่มเพื่อน KidCare 🙏 รอผู้ดูแลกดอนุมัติในแอปก่อน แล้วจะเริ่มได้รับแจ้งเตือนนัดของลูกทุกเช้า 7 โมง";
@@ -59,6 +59,29 @@ export interface WebhookDeps {
   now?: () => Date;
 }
 
+async function replyOrPush(
+  deps: WebhookDeps,
+  userId: string,
+  replyToken: string | undefined,
+  message: LineMessage,
+): Promise<void> {
+  let sent = false;
+  if (replyToken) {
+    try {
+      await deps.api.reply(replyToken, message);
+      sent = true;
+    } catch {
+      console.error("line reply failed");
+    }
+  }
+  if (!sent && userId) {
+    const text = typeof message === "string" ? message : message.text;
+    await deps.api.multicast([userId], text).catch(() => {
+      console.error("line multicast failed");
+    });
+  }
+}
+
 export async function handleLineWebhook(body: string, deps: WebhookDeps): Promise<void> {
   const payload = JSON.parse(body) as { events?: LineEvent[] };
   const now = deps.now ?? (() => new Date());
@@ -76,11 +99,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         });
         await deps.store.put({ userId, displayName, status: "pending", addedAt: now().toISOString() });
       }
-      if (ev.replyToken) {
-        await deps.api.reply(ev.replyToken, existing?.status === "approved" ? REPLY_WELCOME_BACK : REPLY_PENDING).catch(() => {
-          console.error("line reply failed");
-        });
-      }
+      await replyOrPush(deps, userId, ev.replyToken, existing?.status === "approved" ? REPLY_WELCOME_BACK : REPLY_PENDING);
       continue;
     }
 
@@ -92,11 +111,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
     if (ev.type === "message" && ev.message?.type === "text") {
       const user = await deps.store.get(userId);
       if (!user || user.status !== "approved") {
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, REPLY_NOT_APPROVED).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await replyOrPush(deps, userId, ev.replyToken, REPLY_NOT_APPROVED);
         continue;
       }
 
@@ -106,11 +121,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
 
       const text = ev.message?.text?.trim() ?? "";
       if (!text || text.length > 5000) {
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, REPLY_NO_EVENTS).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await replyOrPush(deps, userId, ev.replyToken, REPLY_NO_EVENTS);
         continue;
       }
 
@@ -135,19 +146,18 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           if (lower === "ยกเลิก" || lower === "cancel") {
             await deps.kv.delete(`draft:${pendingDraftId}`);
             await deps.kv.delete(`user_draft:${userId}`);
-            if (ev.replyToken) {
-              await deps.api.reply(ev.replyToken, REPLY_CANCELLED).catch(() => {
-                console.error("line reply failed");
-              });
-            }
+            await replyOrPush(deps, userId, ev.replyToken, REPLY_CANCELLED);
             continue;
           }
 
-          // 2. ตอบเลือกบุคคล: พ่อ / แม่ / ลูก
+          // 2. ตอบเลือกบุคคล: พ่อ / แม่ / ลูก (เฉพาะข้อความสั้นๆ ที่ไม่ใช่ข้อความสร้างนัดใหม่)
+          const isTargetSelection = text.length <= 20 && !/พรุ่งนี้|มะรืน|วันที่|\d{1,2}[.:]\d{2}|\d{1,2}\s*โมง/i.test(text);
           let chosenTarget: string | null = null;
-          if (lower.includes("พ่อ")) chosenTarget = "parent:dad";
-          else if (lower.includes("แม่")) chosenTarget = "parent:mom";
-          else if (lower.includes("ทุกคน")) chosenTarget = "all";
+          if (isTargetSelection) {
+            if (lower.includes("พ่อ")) chosenTarget = "parent:dad";
+            else if (lower.includes("แม่")) chosenTarget = "parent:mom";
+            else if (lower.includes("ทุกคน")) chosenTarget = "all";
+          }
 
           if (chosenTarget) {
             let parsed: DraftEvents;
@@ -190,15 +200,11 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
               },
             ];
 
-            if (ev.replyToken) {
-              await deps.api.reply(ev.replyToken, {
-                type: "text",
-                text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)\n\n(กดปุ่มหรือพิมพ์ 'ปกติ' / 'พิเศษ' ได้เลยครับ)`,
-                quickReply: { items: timingItems },
-              }).catch(() => {
-                console.error("line reply failed");
-              });
-            }
+            await replyOrPush(deps, userId, ev.replyToken, {
+              type: "text",
+              text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)\n\n(กดปุ่มหรือพิมพ์ 'ปกติ' / 'พิเศษ' ได้เลยครับ)`,
+              quickReply: { items: timingItems },
+            });
             continue;
           }
         } else {
@@ -216,11 +222,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
             ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}\n\n💡 สามารถพิมพ์เพิ่มนัดหมายใหม่ เช่น 'พรุ่งนี้ 14:00 เอารถไปตั้งศูนย์' ได้ตลอดเวลาครับ`
             : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉\n\n(หากต้องการเพิ่มนัดหมาย สามารถพิมพ์รายละเอียด เช่น 'พรุ่งนี้ 10:00 ไปหาหมอ' หรือส่งข้อความจากโรงเรียนมาได้เลยครับ)";
 
-          if (ev.replyToken) {
-            await deps.api.reply(ev.replyToken, replyMsg).catch(() => {
-              console.error("line reply failed");
-            });
-          }
+          await replyOrPush(deps, userId, ev.replyToken, replyMsg);
           continue;
         }
       }
@@ -230,20 +232,12 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         events = await extractEvents(deps.client, text, now().toISOString().slice(0, 10));
       } catch (err) {
         console.error("event extraction failed", err instanceof Error ? err.name : "unknown");
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการวิเคราะห์ข้อความ กรุณาลองใหม่อีกครั้งครับ").catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await replyOrPush(deps, userId, ev.replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการวิเคราะห์ข้อความ กรุณาลองใหม่อีกครั้งครับ");
         continue;
       }
 
       if (!events.length) {
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, REPLY_NO_EVENTS).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await replyOrPush(deps, userId, ev.replyToken, REPLY_NO_EVENTS);
         continue;
       }
 
@@ -344,16 +338,11 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
       });
 
       const question = "\n\nต้องการบันทึกให้น้องคนไหน หรือคุณพ่อ/คุณแม่ดีครับ?";
-
-      if (ev.replyToken) {
-        await deps.api.reply(ev.replyToken, {
-          type: "text",
-          text: header + question,
-          quickReply: { items },
-        }).catch(() => {
-          console.error("line reply failed");
-        });
-      }
+      await replyOrPush(deps, userId, ev.replyToken, {
+        type: "text",
+        text: header + question,
+        quickReply: { items },
+      });
       continue;
     }
 
@@ -363,26 +352,19 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
       const draftId = params.get("id");
       const targetChildId = params.get("childId");
 
-      if (!draftId || !deps.kv) continue;
+      if (!draftId && action !== "view_upcoming") continue;
 
       if (action === "cancel") {
-        await deps.kv.delete(`draft:${draftId}`);
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, REPLY_CANCELLED).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        if (draftId && deps.kv) await deps.kv.delete(`draft:${draftId}`);
+        await replyOrPush(deps, userId, ev.replyToken, REPLY_CANCELLED);
         continue;
       }
 
       if (action === "select_target") {
+        if (!draftId || !deps.kv) continue;
         const raw = await deps.kv.get(`draft:${draftId}`);
         if (!raw) {
-          if (ev.replyToken) {
-            await deps.api.reply(ev.replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
-              console.error("line reply failed");
-            });
-          }
+          await replyOrPush(deps, userId, ev.replyToken, REPLY_DRAFT_EXPIRED);
           continue;
         }
 
@@ -436,19 +418,16 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           },
         ];
 
-        if (ev.replyToken) {
-          await deps.api.reply(ev.replyToken, {
-            type: "text",
-            text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)`,
-            quickReply: { items },
-          }).catch(() => {
-            console.error("line reply failed");
-          });
-        }
+        await replyOrPush(deps, userId, ev.replyToken, {
+          type: "text",
+          text: `ต้องการตั้งเวลาแจ้งเตือนสำหรับ${targetLabel}แบบไหนดีครับ?\n\n1. 🔔 ปกติ: เตือนเช้า 07:00 น. ก่อนวันนัด 1 วัน และเช้าวันนัด\n2. ⭐ พิเศษ: เพิ่มเตือนตอนเย็น 18:00 น. ก่อนวันนัด (สำหรับเตรียมของ/ซื้อของ)`,
+          quickReply: { items },
+        });
         continue;
       }
 
       if (action === "confirm") {
+        if (!draftId || !deps.kv) continue;
         const timing = params.get("timing") === "special" ? "special" : "normal";
         await executeConfirmation(draftId, targetChildId, timing, ev.replyToken, deps, now, userId);
         continue;
@@ -463,11 +442,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
             ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}`
             : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉";
 
-          if (ev.replyToken) {
-            await deps.api.reply(ev.replyToken, replyMsg).catch(() => {
-              console.error("line reply failed");
-            });
-          }
+          await replyOrPush(deps, userId, ev.replyToken, replyMsg);
         }
         continue;
       }
@@ -487,11 +462,7 @@ async function executeConfirmation(
   if (!deps.kv || !deps.firestore) return;
   const raw = await deps.kv.get(`draft:${draftId}`);
   if (!raw) {
-    if (replyToken) {
-      await deps.api.reply(replyToken, REPLY_DRAFT_EXPIRED).catch(() => {
-        console.error("line reply failed");
-      });
-    }
+    await replyOrPush(deps, userId || "", replyToken, REPLY_DRAFT_EXPIRED);
     return;
   }
 
@@ -550,11 +521,9 @@ async function executeConfirmation(
     }
   } catch (err) {
     console.error("executeConfirmation save error:", err instanceof Error ? err.message : String(err));
-    if (replyToken) {
-      await deps.api.reply(replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการบันทึกนัดหมายลงระบบ กรุณาลองใหม่อีกครั้งครับ").catch(() => {
-        console.error("line reply failed");
-      });
-    }
+    await deps.kv.delete(`draft:${draftId}`);
+    if (userId) await deps.kv.delete(`user_draft:${userId}`).catch(() => {});
+    await replyOrPush(deps, userId || "", replyToken, "ขออภัยครับ เกิดข้อผิดพลาดในการบันทึกนัดหมายลงระบบ กรุณาลองใหม่อีกครั้งครับ");
     return;
   }
 
@@ -596,10 +565,5 @@ async function executeConfirmation(
   }
 
   const successMsg = `✅ บันทึกนัดหมาย${targetLabel}เรียบร้อยแล้วครับ! ${countMsg}\n\n${summaryLines.join("\n")}${timingNote}${upcomingSection}`;
-
-  if (replyToken) {
-    await deps.api.reply(replyToken, successMsg).catch((err) => {
-      console.error("line reply failed:", err instanceof Error ? err.message : String(err));
-    });
-  }
+  await replyOrPush(deps, userId || "", replyToken, successMsg);
 }
