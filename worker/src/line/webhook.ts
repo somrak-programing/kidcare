@@ -2,7 +2,7 @@ import type { ClaudeLike } from "../extract";
 import { extractEvents } from "../events/extract";
 import type { ExtractedEvent } from "../events/schema";
 import type { FirestoreClient } from "../reminders/firestore";
-import { bangkokDate, formatUpcomingSummary, thaiDay } from "../reminders/message";
+import { bangkokDate, buildUpcomingTableFlex, formatUpcomingSummary, formatUpcomingTableText, thaiDay } from "../reminders/message";
 import type { LineApi, LineMessage, LineQuickReplyItem } from "./api";
 import type { KVLike, RecipientStore } from "./recipients";
 
@@ -86,7 +86,8 @@ async function replyOrPush(
         console.error("line push failed:", err instanceof Error ? err.message : String(err));
         if (typeof message !== "string" && message.quickReply) {
           try {
-            await deps.api.push(userId, message.text);
+            const rawText = message.type === "flex" ? message.altText : message.text;
+            await deps.api.push(userId, rawText);
             sent = true;
           } catch {
             // ignore
@@ -95,7 +96,7 @@ async function replyOrPush(
       }
     }
     if (!sent) {
-      const text = typeof message === "string" ? message : message.text;
+      const text = typeof message === "string" ? message : message.type === "flex" ? message.altText : message.text;
       await deps.api.multicast([userId], text).catch(() => {
         console.error("line multicast failed");
       });
@@ -238,9 +239,8 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         if (deps.firestore?.loadUpcomingSummary) {
           const today = bangkokDate(now());
           const upcoming = await deps.firestore.loadUpcomingSummary(deps.familyId, today, 10).catch(() => []);
-          const summaryText = formatUpcomingSummary(upcoming, 10);
           const replyMsg = upcoming.length > 0
-            ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}\n\n💡 สามารถพิมพ์เพิ่มนัดหมายใหม่ เช่น 'พรุ่งนี้ 14:00 เอารถไปตั้งศูนย์' ได้ตลอดเวลาครับ`
+            ? buildUpcomingTableFlex(upcoming, 10)
             : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉\n\n(หากต้องการเพิ่มนัดหมาย สามารถพิมพ์รายละเอียด เช่น 'พรุ่งนี้ 10:00 ไปหาหมอ' หรือส่งข้อความจากโรงเรียนมาได้เลยครับ)";
 
           await replyOrPush(deps, userId, ev.replyToken, replyMsg);
@@ -513,9 +513,8 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         if (deps.firestore?.loadUpcomingSummary && deps.familyId) {
           const today = bangkokDate(now());
           const upcoming = await deps.firestore.loadUpcomingSummary(deps.familyId, today, 10).catch(() => []);
-          const summaryText = formatUpcomingSummary(upcoming, 10);
           const replyMsg = upcoming.length > 0
-            ? `📋 รายการนัดหมายที่รออยู่เร็วๆ นี้ (${upcoming.length} รายการ):\n\n${summaryText}`
+            ? buildUpcomingTableFlex(upcoming, 10)
             : "📋 ขณะนี้ยังไม่มีรายการนัดหมายที่รออยู่ครับ 🎉";
 
           await replyOrPush(deps, userId, ev.replyToken, replyMsg);
@@ -654,7 +653,7 @@ async function executeConfirmation(
       const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 1000));
       const allUpcoming = await Promise.race([summaryPromise, timeoutPromise]);
       if (allUpcoming.length > 0) {
-        upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
+        upcomingSection = `\n\n${formatUpcomingTableText(allUpcoming, 5)}`;
       }
     } catch (err) {
       console.error("upcoming summary in confirmation error:", err);

@@ -362,8 +362,10 @@ describe("handleLineWebhook", () => {
     );
 
     expect(mockFirestore.loadUpcomingSummary).toHaveBeenCalledWith("fam1", expect.any(String), 10);
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("รายการนัดหมายที่รออยู่เร็วๆ นี้"));
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("เอารถยอมตั้งศูนย์ที่ปลวกแดง"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.objectContaining({
+      type: "flex",
+      altText: expect.stringContaining("ตารางนัดหมาย"),
+    }));
   });
 
   test("isUpcomingQuery correctly identifies query intents versus new appointments", () => {
@@ -406,9 +408,10 @@ describe("handleLineWebhook", () => {
     );
 
     expect(mockFirestore.loadUpcomingSummary).toHaveBeenCalledWith("fam1", expect.any(String), 10);
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("รายการนัดหมายที่รออยู่เร็วๆ นี้"));
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("นัดไปรับรถกระบะ"));
-    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("อาร์ทการาจ"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.objectContaining({
+      type: "flex",
+      altText: expect.stringContaining("นัดไปรับรถกระบะ"),
+    }));
   });
 
   test("executeConfirmation catches Firestore errors and replies with friendly message", async () => {

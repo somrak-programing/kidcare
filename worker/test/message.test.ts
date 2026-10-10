@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { bangkokDate, buildEveningReminderText, buildReminderText, formatUpcomingSummary, thaiDay } from "../src/reminders/message";
+import { bangkokDate, buildEveningReminderText, buildReminderText, buildUpcomingTableFlex, formatUpcomingSummary, formatUpcomingTableText, thaiDay } from "../src/reminders/message";
 
 describe("bangkokDate", () => {
   test("00:00 UTC is 07:00 same day in Bangkok", () => {
@@ -102,5 +102,38 @@ describe("formatUpcomingSummary", () => {
         "• น้องมะลิ: เปิดเทอม (พฤ. 29 ต.ค. · โรงเรียน)",
       ].join("\n"),
     );
+  });
+
+  test("formatUpcomingTableText formats items into a clean bordered table text block", () => {
+    const text = formatUpcomingTableText([
+      { date: "2026-10-12", childName: "คุณพ่อ", title: "นัดไปรับรถกระบะ", time: "18:00", place: "อาร์ทการาจ" },
+      { date: "2026-10-15", childName: "น้องวินเทจ", title: "เปิดเทอม", place: "โรงเรียน" },
+    ]);
+    expect(text).toContain("ตารางนัดหมายที่รออยู่ (2 รายการ)");
+    expect(text).toContain("━━━━━━━━━━━━━━━━━━━━");
+    expect(text).toContain("จ. 12 ต.ค.");
+    expect(text).toContain("18:00 น.");
+    expect(text).toContain("👤 คุณพ่อ: นัดไปรับรถกระบะ");
+    expect(text).toContain("📍 อาร์ทการาจ");
+    expect(text).toContain("👤 น้องวินเทจ: เปิดเทอม");
+  });
+
+  test("buildUpcomingTableFlex generates valid LINE Flex Message bubble table", () => {
+    const flex = buildUpcomingTableFlex([
+      { date: "2026-10-12", childName: "คุณพ่อ", title: "นัดไปรับรถกระบะ", time: "18:00", place: "อาร์ทการาจ" },
+      { date: "2026-10-15", childName: "น้องวินเทจ", title: "เปิดเทอม", place: "โรงเรียน" },
+    ]);
+    expect(flex.type).toBe("flex");
+    expect(flex.altText).toContain("2 รายการ");
+    expect(flex.contents).toMatchObject({
+      type: "bubble",
+      size: "giga",
+      header: expect.objectContaining({
+        type: "box",
+      }),
+      body: expect.objectContaining({
+        type: "box",
+      }),
+    });
   });
 });

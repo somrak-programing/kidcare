@@ -12,6 +12,15 @@ export interface LineQuickReplyItem {
   };
 }
 
+export interface LineFlexMessage {
+  type: "flex";
+  altText: string;
+  contents: Record<string, unknown>;
+  quickReply?: {
+    items: LineQuickReplyItem[];
+  };
+}
+
 export type LineMessage =
   | string
   | {
@@ -20,7 +29,8 @@ export type LineMessage =
       quickReply?: {
         items: LineQuickReplyItem[];
       };
-    };
+    }
+  | LineFlexMessage;
 
 export interface LineApi {
   profile(userId: string): Promise<{ displayName: string }>;
