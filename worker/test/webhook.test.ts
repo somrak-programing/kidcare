@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { LineApi } from "../src/line/api";
 import { kvRecipientStore } from "../src/line/recipients";
-import { REPLY_PENDING, REPLY_WELCOME_BACK, handleLineWebhook } from "../src/line/webhook";
+import { REPLY_PENDING, REPLY_WELCOME_BACK, handleLineWebhook, isUpcomingQuery } from "../src/line/webhook";
 import { UpstreamError } from "../src/upstream";
 import { memoryKV } from "./helpers";
 
@@ -364,6 +364,51 @@ describe("handleLineWebhook", () => {
     expect(mockFirestore.loadUpcomingSummary).toHaveBeenCalledWith("fam1", expect.any(String), 10);
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("รายการนัดหมายที่รออยู่เร็วๆ นี้"));
     expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("เอารถยอมตั้งศูนย์ที่ปลวกแดง"));
+  });
+
+  test("isUpcomingQuery correctly identifies query intents versus new appointments", () => {
+    expect(isUpcomingQuery("สรุปวันนัดหมาย")).toBe(true);
+    expect(isUpcomingQuery("สรุปนัดหมาย")).toBe(true);
+    expect(isUpcomingQuery("ดูวันนัด")).toBe(true);
+    expect(isUpcomingQuery("ตารางนัด")).toBe(true);
+    expect(isUpcomingQuery("มีนัดอะไรบ้าง")).toBe(true);
+    expect(isUpcomingQuery("นัดหมายมีอะไรบ้าง")).toBe(true);
+    expect(isUpcomingQuery("นัดหมาย")).toBe(true);
+    expect(isUpcomingQuery("สรุป")).toBe(true);
+
+    // Should NOT match new appointment creation
+    expect(isUpcomingQuery("พรุ่งนี้ 14:30 เอารถไปตั้งศูนย์ที่ปลวกแดง")).toBe(false);
+    expect(isUpcomingQuery("วันจันทร์ ที่ 12 ตุลาคม 2026 นัดไปรับรถกระบะตอน 18.00 น.")).toBe(false);
+  });
+
+  test("user typing 'สรุปวันนัดหมาย' triggers loadUpcomingSummary and returns list", async () => {
+    const kv = memoryKV();
+    const store = kvRecipientStore(kv);
+    await store.put({ userId: "U1", displayName: "พ่อ", status: "approved", addedAt: "x" });
+    const a = api();
+
+    const mockFirestore = {
+      loadUpcomingSummary: vi.fn().mockResolvedValue([
+        { date: "2026-10-12", childName: "คุณพ่อ", title: "นัดไปรับรถกระบะ", time: "18:00", place: "อาร์ทการาจ" },
+      ]),
+    };
+
+    await handleLineWebhook(
+      JSON.stringify({
+        events: [{
+          type: "message",
+          replyToken: "rt",
+          message: { type: "text", text: "สรุปวันนัดหมาย" },
+          source: { type: "user", userId: "U1" },
+        }],
+      }),
+      { store, api: a, kv, firestore: mockFirestore as any, familyId: "fam1", client: {} as any },
+    );
+
+    expect(mockFirestore.loadUpcomingSummary).toHaveBeenCalledWith("fam1", expect.any(String), 10);
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("รายการนัดหมายที่รออยู่เร็วๆ นี้"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("นัดไปรับรถกระบะ"));
+    expect(a.reply).toHaveBeenCalledWith("rt", expect.stringContaining("อาร์ทการาจ"));
   });
 
   test("executeConfirmation catches Firestore errors and replies with friendly message", async () => {

@@ -87,6 +87,18 @@ describe("parseThaiEvents", () => {
       place: "โรงพยาบาล",
     });
   });
+
+  test("extracts message with date, 'ตอน 18.00 น.', and 'ที่อาร์ทการาจ'", () => {
+    const text = "วันจันทร์ ที่ 12 ตุลาคม 2026 นัดไปรับรถกระบะตอน 18.00 น. ที่อาร์ทการาจ";
+    const events = parseThaiEvents(text, "2026-10-10");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      title: expect.stringContaining("นัดไปรับรถกระบะ"),
+      date: "2026-10-12",
+      time: "18:00",
+      place: "อาร์ทการาจ",
+    });
+  });
 });
 
 describe("buildEventParams", () => {

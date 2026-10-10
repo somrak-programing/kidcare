@@ -16,18 +16,21 @@ export const REPLY_CANCELLED = "ยกเลิกการบันทึกเ
 export function isUpcomingQuery(text: string): boolean {
   const clean = text.trim().toLowerCase();
   if (
-    /^(สรุป|ดู|เช็ค|ตรวจ|ขอ)?\s*(นัด|นัดหมาย|รายการนัด|ตารางนัด|ค้างนัด|รายการค้าง)/i.test(clean) ||
-    /มีนัด(อะไร|บ้าง|ไหน)/i.test(clean) ||
-    /นัด(อะไร|บ้าง|ไหน)/i.test(clean) ||
+    /(สรุป|ดู|เช็ค|ตรวจ|ขอ|แสดง|ตาราง).*(นัด|นัดหมาย|ค้าง)/i.test(clean) ||
+    /(นัด|นัดหมาย).*(อะไร|บ้าง|ไหน|ทั้งหมด|ค้าง|ปัจจุบัน|เร็วๆ)/i.test(clean) ||
+    /มีนัด/i.test(clean) ||
     clean === "นัด" ||
     clean === "นัดหมาย" ||
     clean === "สรุป" ||
+    clean === "ตาราง" ||
     clean.includes("ค้างนัด") ||
     clean.includes("สรุปนัด") ||
-    clean.includes("ดูนัด")
+    clean.includes("ดูนัด") ||
+    clean.includes("วันนัดหมาย") ||
+    clean.includes("สรุปวันนัด")
   ) {
     // Exclude if it looks like adding a new appointment (contains dates or times)
-    if (!/พรุ่งนี้|มะรืน|วันที่|\d{1,2}\s*(?:ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค)|\d{1,2}\/\d{1,2}|เวลา\s*\d|\d{1,2}[.:]\d{2}|\d{1,2}\s*โมง/i.test(clean)) {
+    if (!/พรุ่งนี้|มะรืน|เมื่อวาน|\d{1,2}\s*(?:ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค)|\d{1,2}\/\d{1,2}|เวลา\s*\d|\d{1,2}[.:]\d{2}|\d{1,2}\s*โมง/i.test(clean)) {
       return true;
     }
   }
@@ -282,7 +285,7 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
       if (!children.length && deps.firestore) {
         try {
           const fetchPromise = deps.firestore.loadChildren(deps.familyId);
-          const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 600));
+          const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 400));
           children = await Promise.race([fetchPromise, timeoutPromise]);
           if (children.length > 0 && deps.kv) {
             await deps.kv.put(`family_children:${deps.familyId}`, JSON.stringify(children), {
@@ -295,6 +298,17 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
           } else {
             children = [{ id: "child", name: "ลูก", nickname: "ลูก" }];
           }
+          if (deps.kv) {
+            await deps.kv.put(`family_children:${deps.familyId}`, JSON.stringify(children), {
+              expirationTtl: 300,
+            }).catch(() => {});
+          }
+        }
+      } else if (!children.length) {
+        if (deps.familyId === "XqMb4retoBTkO7feIQkS") {
+          children = [{ id: "vintage", name: "วินเทจ", nickname: "วินเทจ" }];
+        } else {
+          children = [{ id: "child", name: "ลูก", nickname: "ลูก" }];
         }
       }
 
@@ -429,10 +443,25 @@ export async function handleLineWebhook(body: string, deps: WebhookDeps): Promis
         if (targetChildId === "parent:dad") targetLabel = "คุณพ่อ";
         else if (targetChildId === "parent:mom") targetLabel = "คุณแม่";
         else if (targetChildId === "all") targetLabel = "ทุกคนในบ้าน";
-        else if (targetChildId && deps.firestore) {
-          const children = await deps.firestore.loadChildren(deps.familyId ?? "").catch(() => []);
-          const matched = children.find((c) => c.id === targetChildId);
-          if (matched) targetLabel = `น้อง${matched.nickname || matched.name}`;
+        else if (targetChildId) {
+          let cachedList: Array<{ id: string; name: string; nickname?: string }> = [];
+          if (deps.kv) {
+            const cachedStr = await deps.kv.get(`family_children:${deps.familyId}`);
+            if (cachedStr) {
+              try { cachedList = JSON.parse(cachedStr); } catch {}
+            }
+          }
+          let matched = cachedList.find((c) => c.id === targetChildId);
+          if (!matched && (targetChildId === "vintage" || targetChildId === "child")) {
+            matched = { id: targetChildId, name: "วินเทจ", nickname: "วินเทจ" };
+          }
+          if (matched) {
+            targetLabel = `น้อง${matched.nickname || matched.name}`;
+          } else if (deps.firestore) {
+            const children = await deps.firestore.loadChildren(deps.familyId ?? "").catch(() => []);
+            const found = children.find((c) => c.id === targetChildId);
+            if (found) targetLabel = `น้อง${found.nickname || found.name}`;
+          }
         }
 
         const items: LineQuickReplyItem[] = [
@@ -523,9 +552,20 @@ async function executeConfirmation(
   }
 
   const childIdToUse = targetChildId || draft.targetChildId;
-  const children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
-  if (children.length > 0 && deps.kv) {
-    await deps.kv.put(`family_children:${draft.familyId}`, JSON.stringify(children), { expirationTtl: 86400 }).catch(() => {});
+  let children: Array<{ id: string; name: string; nickname?: string }> = [];
+  if (deps.kv) {
+    const cached = await deps.kv.get(`family_children:${draft.familyId}`);
+    if (cached) {
+      try {
+        children = JSON.parse(cached);
+      } catch {}
+    }
+  }
+  if (!children.length && deps.firestore) {
+    children = await deps.firestore.loadChildren(draft.familyId).catch(() => []);
+    if (children.length > 0 && deps.kv) {
+      await deps.kv.put(`family_children:${draft.familyId}`, JSON.stringify(children), { expirationTtl: 86400 }).catch(() => {});
+    }
   }
   let resolvedChildId = childIdToUse;
   if (childIdToUse === "vintage" || childIdToUse === "child" || !childIdToUse) {
@@ -610,7 +650,9 @@ async function executeConfirmation(
   if (deps.firestore.loadUpcomingSummary) {
     try {
       const today = bangkokDate(now());
-      const allUpcoming = await deps.firestore.loadUpcomingSummary(draft.familyId, today, 5);
+      const summaryPromise = deps.firestore.loadUpcomingSummary(draft.familyId, today, 5, false);
+      const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 1000));
+      const allUpcoming = await Promise.race([summaryPromise, timeoutPromise]);
       if (allUpcoming.length > 0) {
         upcomingSection = `\n\n📋 ภาพรวมนัดหมายที่รออยู่เร็วๆ นี้:\n${formatUpcomingSummary(allUpcoming, 5)}`;
       }

@@ -73,8 +73,8 @@ function addDaysToIso(iso: string, days: number): string {
 }
 
 export function extractThaiTime(text: string): { time: string | null; matchedText: string | null } {
-  // 1. Standard colon/dot time: 14:00, 14.00 น., 09:30, เวลา 14.00 น.
-  const stdMatch = text.match(/(?:เวลา\s*)?(\d{1,2})[.:](\d{2})\s*(?:น\.|นาฬิกา)?/i);
+  // 1. Standard colon/dot time: 14:00, 14.00 น., 09:30, เวลา 14.00 น., ตอน 18.00 น.
+  const stdMatch = text.match(/(?:เวลา\s*|ตอน\s*|ช่วง\s*)?(\d{1,2})[.:](\d{2})\s*(?:น\.|นาฬิกา)?/i);
   if (stdMatch) {
     const h = String(Number(stdMatch[1])).padStart(2, "0");
     const m = stdMatch[2];
@@ -82,7 +82,7 @@ export function extractThaiTime(text: string): { time: string | null; matchedTex
   }
 
   // 2. Whole hour with น. / นาฬิกา: 14 น., 9 นาฬิกา, เวลา 10 น.
-  const hourMatch = text.match(/(?:เวลา\s*)?(\d{1,2})\s*(?:น\.|นาฬิกา)/i);
+  const hourMatch = text.match(/(?:เวลา\s*|ตอน\s*|ช่วง\s*)?(\d{1,2})\s*(?:น\.|นาฬิกา)/i);
   if (hourMatch) {
     const h = String(Number(hourMatch[1])).padStart(2, "0");
     return { time: `${h}:00`, matchedText: hourMatch[0] };
@@ -141,6 +141,12 @@ function inferPlace(text: string): string {
   if (/พนักงาน|บริษัท|ออฟฟิศ|ที่ทำงาน|HR|ประชุมบริษัท/i.test(text)) return "ที่ทำงาน";
   if (/โรงเรียน|อนุบาล|ครู|นักเรียน/i.test(text)) return "โรงเรียน";
   if (/โรงพยาบาล|รพ\.|คลินิก|แพทย์|หมอ/i.test(text)) return "โรงพยาบาล";
+  const matches = text.matchAll(/ที่\s*([^\s,()\n]{2,30})/g);
+  for (const m of matches) {
+    if (!/ที่ทำงาน|ที่รัก|ที่มี|ที่ทำ|ที่จะ|ที่ได้|ที่นัด|ที่ไหน|ที่สุด|ที่แล้ว|ที่พัก|ที่\s*\d/i.test(m[0])) {
+      return m[1].trim();
+    }
+  }
   return "สถานที่ตามนัด";
 }
 
@@ -161,8 +167,9 @@ function cleanTitle(raw: string): string {
     .trim();
 
   // If title ends with weekday or connector, strip it
-  s = s.replace(/\s*(?:วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|ที่)?|คือ|ใน|ณ|ตรงกับ)\s*$/g, "").trim();
+  s = s.replace(/\s*(?:วัน(?:จันทร์|อังคาร|พุธ|พฤหัสบดี|พฤหัส|ศุกร์|เสาร์|อาทิตย์|ที่)?|คือ|ใน|ณ|ตรงกับ|ตอน|ช่วง)\s*$/g, "").trim();
   s = s.replace(/^[:\-\s]+/, "").trim();
+  s = s.replace(/\s{2,}/g, " ").trim();
   return s;
 }
 

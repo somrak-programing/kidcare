@@ -182,7 +182,7 @@ export function createFirestoreReader(
       return items;
     },
 
-    async loadUpcomingSummary(familyId: string, fromDate: string, limit = 5): Promise<ReminderItem[]> {
+    async loadUpcomingSummary(familyId: string, fromDate: string, limit = 5, includeVaccines = true): Promise<ReminderItem[]> {
       const fam = `families/${familyId}`;
       const items: ReminderItem[] = [];
       const nameOf = new Map<string, string>();
@@ -217,9 +217,9 @@ export function createFirestoreReader(
           items.push(item);
         }
 
-        // Query vaccine doses for all children in parallel with a strict 1.5s timeout
-        if (childrenRes.length > 0) {
-          const timeoutDoses = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+        // Query vaccine doses for all children in parallel with a strict 800ms timeout
+        if (includeVaccines && childrenRes.length > 0) {
+          const timeoutDoses = new Promise<void>((resolve) => setTimeout(resolve, 800));
           const fetchDoses = Promise.allSettled(
             childrenRes.map(async (c) => {
               const doses = await runQuery(`${fam}/children/${c.id}`, "vaccineDoses", eq("given", { booleanValue: false }));
