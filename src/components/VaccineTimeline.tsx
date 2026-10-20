@@ -3,14 +3,12 @@ import { Link } from "react-router-dom";
 import { Camera, CalendarPlus, CheckSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BulkGivenDialog from "@/components/BulkGivenDialog";
-import CalendarButtons from "@/components/CalendarButtons";
 import ErrorState from "@/components/ErrorState";
 import RecordDoseDialog from "@/components/RecordDoseDialog";
 import StatusBadge from "@/components/StatusBadge";
 import { useDoses, useSeries } from "@/hooks/data";
 import { formatThaiDate, todayISO } from "@/domain/dates";
 import { doseStatus } from "@/domain/doseStatus";
-import { calendarName } from "@/domain/names";
 import { createEpiSeries, deleteSeries } from "@/lib/repo/vaccines";
 import type { Child, VaccineDose } from "@/types";
 
@@ -20,7 +18,6 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
   const [active, setActive] = useState<VaccineDose | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const today = todayISO();
-  const who = calendarName(child);
   const hasEpi = series.some((s) => s.source === "epi");
 
   const bySeries = useMemo(() => {
@@ -80,9 +77,6 @@ export default function VaccineTimeline({ fid, child }: { fid: string; child: Ch
                         <StatusBadge status={st} />
                       </span>
                     </button>
-                    {!d.given && d.dueDate && (st === "dueSoon" || st === "scheduled" || st === "overdue") && (
-                      <CalendarButtons event={{ uid: `dose-${d.id}`, title: `${who}: ${d.vaccineName} เข็ม ${d.doseNo}`, date: d.dueDate, location: d.place }} />
-                    )}
                   </li>
                 );
               })}

@@ -6,11 +6,9 @@ import AllergyBanner from "@/components/AllergyBanner";
 import ErrorState from "@/components/ErrorState";
 import QuickTempDialog from "@/components/QuickTempDialog";
 import VaccineTimeline from "@/components/VaccineTimeline";
-import CalendarButtons from "@/components/CalendarButtons";
 import { useChild, useGrowth, useIllnesses, useOpenAppointments, useTemperatureLogs } from "@/hooks/data";
 import { useFamilyId } from "@/hooks/useFamilyId";
 import { ageText, formatThaiDate, todayISO } from "@/domain/dates";
-import { calendarName } from "@/domain/names";
 
 export default function ChildDetail() {
   const { id: cid = "" } = useParams();
@@ -170,7 +168,7 @@ export default function ChildDetail() {
                 <Link to={`/appointments/new?child=${cid}`}>+ เพิ่มนัด</Link>
               </Button>
             </div>
-            <ChildAppointments fid={fid} cid={cid} who={calendarName(child)} />
+            <ChildAppointments fid={fid} cid={cid} />
           </section>
 
           {/* โรงพยาบาล & HN */}
@@ -205,7 +203,7 @@ export default function ChildDetail() {
   );
 }
 
-function ChildAppointments({ fid, cid, who }: { fid: string; cid: string; who: string }) {
+function ChildAppointments({ fid, cid }: { fid: string; cid: string }) {
   const { data, error } = useOpenAppointments(fid);
   if (error) return <ErrorState error={error} />;
   const mine = data
@@ -220,7 +218,6 @@ function ChildAppointments({ fid, cid, who }: { fid: string; cid: string; who: s
             <p className="font-semibold">{a.purpose}</p>
             <p className="text-muted-foreground">{formatThaiDate(a.date)}{a.time ? ` ${a.time} น.` : ""} · {a.place}</p>
           </Link>
-          <CalendarButtons event={{ uid: `appt-${a.id}`, title: `${who}: ${a.purpose}`, date: a.date, time: a.time, location: a.place }} />
         </div>
       ))}
       <Button asChild size="sm" variant="outline"><Link to={`/appointments/new?child=${cid}`}>เพิ่มนัด</Link></Button>

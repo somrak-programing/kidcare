@@ -1,9 +1,7 @@
 import { Link } from "react-router-dom";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import CalendarButtons from "@/components/CalendarButtons";
 import { formatThaiDate, todayISO } from "@/domain/dates";
-import { calendarName } from "@/domain/names";
 import { groupUpcoming, type UpcomingItem } from "@/domain/upcoming";
 import { DISEASE_CATEGORIES } from "@/domain/appointmentFilters";
 import { setAppointmentDone } from "@/lib/repo/appointments";
@@ -29,13 +27,6 @@ export default function UpcomingList({
     if (cid === "family") return "🏠 ครอบครัว";
     const c = kids.find((x) => x.id === cid);
     return c ? c.nickname || c.name || "ไม่ระบุ" : "ไม่ระบุ";
-  };
-  const calWho = (cid: string) => {
-    if (cid === "parent:dad" || cid === "dad") return "คุณพ่อ";
-    if (cid === "parent:mom" || cid === "mom") return "คุณแม่";
-    if (cid === "family") return "ครอบครัว";
-    const c = kids.find((x) => x.id === cid);
-    return (c && calendarName(c)) || "ไม่ระบุ";
   };
   const sections: [string, UpcomingItem[], string][] = [
     ["เลยกำหนด", g.overdue, "border-red-500/60"],
@@ -72,14 +63,13 @@ export default function UpcomingList({
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
                     </Link>
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
-                      {it.kind === "appointment" && (
+                    {it.kind === "appointment" && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
                         <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}>
                           <Check size={14} className="mr-1" /> ไปแล้ว
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
