@@ -11,6 +11,8 @@ export interface UpcomingItem {
   title: string;
   place?: string;
   remindTiming?: "normal" | "special";
+  vaccineName?: string;
+  vaccineCode?: string | null;
 }
 
 export const byDateTime = (a: UpcomingItem, b: UpcomingItem) =>

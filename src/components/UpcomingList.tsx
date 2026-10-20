@@ -5,6 +5,7 @@ import CalendarButtons from "@/components/CalendarButtons";
 import { formatThaiDate, todayISO } from "@/domain/dates";
 import { calendarName } from "@/domain/names";
 import { groupUpcoming, type UpcomingItem } from "@/domain/upcoming";
+import { DISEASE_CATEGORIES } from "@/domain/appointmentFilters";
 import { setAppointmentDone } from "@/lib/repo/appointments";
 import type { Child } from "@/types";
 
@@ -49,29 +50,39 @@ export default function UpcomingList({
           <div key={label} className="space-y-2.5">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label} ({list.length})</h3>
             <div className={columns === 2 ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-2.5"}>
-              {list.map((it) => (
-                <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-xl border-l-4 ${border} border-t border-r border-b bg-card p-3.5 shadow-xs transition-colors hover:border-primary/40`}>
-                  <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-foreground">{who(it.childId)} · {it.title}</p>
-                      {it.remindTiming === "special" && (
-                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium">
-                          🔔 เตือนเย็นพิเศษ
-                        </span>
+              {list.map((it) => {
+                const category = DISEASE_CATEGORIES.find((c) => c.matches(it));
+                return (
+                  <div key={`${it.kind}-${it.id}`} className={`space-y-2 rounded-xl border-l-4 ${border} border-t border-r border-b bg-card p-3.5 shadow-xs transition-colors hover:border-primary/40`}>
+                    <Link to={it.kind === "dose" ? `/children/${it.childId}` : `/appointments/${it.id}/edit`} className="block text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-foreground">{who(it.childId)} · {it.title}</p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {category && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground font-medium">
+                              {category.badge}
+                            </span>
+                          )}
+                          {it.remindTiming === "special" && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium">
+                              🔔 เตือนเย็นพิเศษ
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
+                    </Link>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
+                      {it.kind === "appointment" && (
+                        <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}>
+                          <Check size={14} className="mr-1" /> ไปแล้ว
+                        </Button>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{formatThaiDate(it.date)}{it.time ? ` ${it.time} น.` : ""}{it.place ? ` · ${it.place}` : ""}</p>
-                  </Link>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <CalendarButtons event={{ uid: `${it.kind === "dose" ? "dose" : "appt"}-${it.id}`, title: `${calWho(it.childId)}: ${it.title}`, date: it.date, time: it.time, location: it.place }} />
-                    {it.kind === "appointment" && (
-                      <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" aria-label={`ไปแล้ว: ${it.title}`} onClick={() => setAppointmentDone(fid, it.id, true)}>
-                        <Check size={14} className="mr-1" /> ไปแล้ว
-                      </Button>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : null,
